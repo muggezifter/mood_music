@@ -93,7 +93,7 @@ MOOD_COLORS: dict[str, tuple] = {
 
 _frame_q     = queue.Queue(maxsize=1)
 _result_lock = threading.Lock()
-_result: dict = {'mood': None, 'confidence': 0.0}
+_result: dict = {'mood': None, 'confidence': 0.0, 'face_present': False}
 _stop_evt    = threading.Event()
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -252,8 +252,12 @@ def analysis_worker(args: argparse.Namespace) -> None:
 
         if mood:
             with _result_lock:
-                _result['mood']       = mood
-                _result['confidence'] = conf
+                _result['mood']         = mood
+                _result['confidence']   = conf
+                _result['face_present'] = True
+        else:
+            with _result_lock:
+                _result['face_present'] = False
 
         # Rate-limit: sleep for interval, but wake immediately on stop.
         _stop_evt.wait(args.interval)
@@ -262,11 +266,16 @@ def analysis_worker(args: argparse.Namespace) -> None:
 # On-screen overlay  (only used when --no-display is not set)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _draw_overlay(frame, mood: str | None, confidence: float, pd_ok: bool) -> None:
+def _draw_overlay(frame, mood: str | None, confidence: float,
+                  pd_ok: bool, face_ok: bool = True) -> None:
     import cv2
     h, w = frame.shape[:2]
-    color = MOOD_COLORS.get(mood, (200, 200, 200)) if mood else (160, 160, 160)
-    label = mood.upper() if mood else 'DETECTING…'
+    if not face_ok:
+        color = (80, 80, 80)
+        label = 'NO FACE'
+    else:
+        color = MOOD_COLORS.get(mood, (200, 200, 200)) if mood else (160, 160, 160)
+        label = mood.upper() if mood else 'DETECTING\u2026'
 
     # Dark footer bar
     cv2.rectangle(frame, (0, h - 56), (w, h), (22, 22, 22), -1)
@@ -381,6 +390,12 @@ def main() -> None:
     confirmed_mood   = None
     candidate_mood   = None
     candidate_count  = 0
+    face_confirmed   = None   # None = not yet known, True = face, False = no face
+    face_candidate   = None
+    face_cand_count  = 0
+
+    # Tell rhythm_changes.py to pause until we confirm a face
+    sender.send('face_off')
 
     try:
         while True:
@@ -394,8 +409,23 @@ def main() -> None:
             with _result_lock:
                 raw_mood = _result['mood']
                 raw_conf = _result['confidence']
+                raw_face = _result['face_present']
 
-            # Debounce: only act after N consecutive identical readings.
+            # Face-presence debounce (independent of mood debounce)
+            if raw_face == face_candidate:
+                face_cand_count += 1
+            else:
+                face_candidate  = raw_face
+                face_cand_count = 1
+
+            if face_cand_count >= args.debounce and face_candidate != face_confirmed:
+                token = 'face_on' if face_candidate else 'face_off'
+                sender.send(token)
+                state = 'detected' if face_candidate else 'lost'
+                print(f"  [face {state}]", flush=True)
+                face_confirmed = face_candidate
+
+            # Mood debounce: only act after N consecutive identical readings.
             if raw_mood == candidate_mood:
                 candidate_count += 1
             else:
@@ -411,7 +441,8 @@ def main() -> None:
                     confirmed_mood = candidate_mood
 
             if not args.no_display:
-                _draw_overlay(frame, confirmed_mood, raw_conf, sender.connected)
+                _draw_overlay(frame, confirmed_mood, raw_conf,
+                              sender.connected, face_confirmed is True)
                 cv2.imshow('Mood Detector  [q / Esc = quit]', frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):

@@ -181,6 +181,28 @@ The previous workaround (routing DeepFace's 'neutral' label to 'contempt' as the
 closest Ekman substitute) is no longer needed now that neutral is a dedicated mood
 with its own MOOD_PARAMS entry in rhythm_changes.py.
 
+--------------------------------------------------------------------------------
+UPDATE — Face-gated playback
+--------------------------------------------------------------------------------
+mood_detector.py now signals face presence/absence to rhythm_changes.py over
+the same TCP connection used for mood names.
+
+New TCP tokens sent by mood_detector.py:
+  face_off   — sent immediately on startup (rhythm_changes.py starts muted)
+  face_on    — sent when a face is confirmed present (after debounce)
+  face_off   — sent when the face is confirmed gone  (after debounce)
+
+Changes in mood_detector.py:
+  _result dict gains 'face_present' (bool), set by the analysis worker:
+    True  when the backend returns a valid mood (implying a face was found)
+    False when the backend returns None (no face or below confidence)
+  Separate face-presence debounce in the main loop, using the same
+    --debounce count as mood debounce, to avoid flickering on/off.
+  Console prints '[face detected]' / '[face lost]' on each transition.
+  Overlay shows 'NO FACE' in dark grey when no face is confirmed.
+  PDSender.send() is reused for face tokens; the same connection carries
+    both mood names and face-presence signals.
+
 ================================================================================
 END OF LOG
 ================================================================================

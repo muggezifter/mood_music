@@ -96,6 +96,8 @@ KEY_SEMITONES: dict[str, int] = {
 _current_chord = None           # set by play_chorus before each chord slot
 _mood_lock     = threading.Lock()
 _stop_event    = threading.Event()
+_play_event    = threading.Event()
+_play_event.set()               # playing by default; cleared on 'face_off'
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Mood → melody parameters
@@ -493,11 +495,25 @@ def play_chorus(midiout: rtmidi.MidiOut, beat: float,
     print(f"Chorus {chorus_num}:")
     bars = build_chorus(final)
     labels = SECTION_LABELS.get(CHANGES, {})
+    _face_paused = False
     for bar_idx, bar in enumerate(bars):
         label = labels.get(bar_idx)
         if label:
             print(f"  {label}")
         for slot in bar:
+            # Block here if mood_detector has signalled no face
+            if not _play_event.is_set():
+                if not _face_paused:
+                    midiout.send_message([0xB0 | CHANNEL,        123, 0])
+                    midiout.send_message([0xB0 | MELODY_CHANNEL, 123, 0])
+                    print("[play] No face \u2014 paused.", flush=True)
+                    _face_paused = True
+                while not _play_event.is_set():
+                    if _stop_event.is_set():
+                        return
+                    _play_event.wait(timeout=0.5)
+                print("[play] Face detected \u2014 resuming.", flush=True)
+                _face_paused = False
             with _mood_lock:
                 _current_chord = slot
             play_slot(midiout, slot, beat)
@@ -535,6 +551,14 @@ def melody_thread_func(midiout: rtmidi.MidiOut, beat: float) -> None:
     active_note = None
 
     while not _stop_event.is_set():
+        # Pause if face not detected
+        if not _play_event.is_set():
+            if active_note is not None:
+                midiout.send_message([0x80 | MELODY_CHANNEL, active_note, 0])
+                active_note = None
+            _play_event.wait(timeout=0.5)
+            continue
+
         with _mood_lock:
             chord_data = _current_chord
             mood       = MOOD
@@ -628,6 +652,12 @@ def network_listener_func(port: int) -> None:
                             eff_bpm = round(BPM * (1.0 + (factor - 1.0) * MOOD_TEMPO))
                             tempo_note = f"  (tempo → {eff_bpm} BPM)" if MOOD_TEMPO > 0 else ""
                             print(f"[net] Mood \u2192 {MOOD}{tempo_note}")
+                        elif word == 'face_on':
+                            _play_event.set()
+                            print("[net] Face detected \u2192 resuming", flush=True)
+                        elif word == 'face_off':
+                            _play_event.clear()
+                            print("[net] No face \u2192 pausing", flush=True)
                 except socket.timeout:
                     continue
                 except OSError:

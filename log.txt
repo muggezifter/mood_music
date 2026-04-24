@@ -325,6 +325,32 @@ Examples:
   python rhythm_changes.py --mood anger --mood-tempo 1.0
   python rhythm_changes.py --mood sadness --mood-tempo 0.5 --bpm 140
 
+--------------------------------------------------------------------------------
+STEP 10 — Face-gated playback (mood_detector integration)
+--------------------------------------------------------------------------------
+Playback now starts and stops automatically depending on whether mood_detector
+has a face in frame, coordinated through the same TCP connection used for mood
+messages.
+
+New TCP tokens (received by rhythm_changes.py on --net-port):
+  face_on    — a face has been confirmed present; resume playing
+  face_off   — no face confirmed; pause and silence both MIDI channels
+
+Behavior in rhythm_changes.py:
+  _play_event (threading.Event, starts set) controls playback.
+  play_chorus() checks _play_event before every chord slot:
+    • On pause: sends All Notes Off (CC 123) on both accomp. and melody
+      channels, then blocks until the event is set again.
+    • On resume: continues from the exact chord slot it paused on.
+  melody_thread_func() releases any held melody note and waits when
+    _play_event is cleared.
+  Network listener handles 'face_on' / 'face_off' alongside mood tokens.
+
+Backward compatibility:
+  Running rhythm_changes.py alone: _play_event starts set, so playback
+  begins immediately as before. Face-gating only activates once
+  mood_detector.py connects and sends its initial 'face_off'.
+
 ================================================================================
 END OF LOG
 ================================================================================
