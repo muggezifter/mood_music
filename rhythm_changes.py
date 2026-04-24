@@ -44,6 +44,7 @@ DEFAULT_MELODY_PROGRAM  = 66     # GM 67 = Tenor Sax
 DEFAULT_NET_PORT        = 3000   # TCP port for PureData netsend
 DEFAULT_MOOD            = 'happiness'
 DEFAULT_BASS_VARIATION  = 0.0    # 0.0 = no variation, 1.0 = maximum
+DEFAULT_MOOD_TEMPO      = 0.0    # 0.0 = mood has no tempo effect, 1.0 = full effect
 
 # Module-level names kept for use by helper functions; set in main() from args.
 BPM       = DEFAULT_BPM
@@ -63,6 +64,7 @@ MELODY_PROGRAM = DEFAULT_MELODY_PROGRAM
 NET_PORT       = DEFAULT_NET_PORT
 MOOD           = DEFAULT_MOOD
 BASS_VARIATION = DEFAULT_BASS_VARIATION
+MOOD_TEMPO     = DEFAULT_MOOD_TEMPO
 
 # Natural ("home") key for each changes type; used to compute TRANSPOSE.
 CHANGES_REF_KEY: dict[str, str] = {
@@ -154,6 +156,19 @@ MOOD_PARAMS: dict[str, dict] = {
         chord_w=0.50, scale_w=0.45, tension_w=0.05,
         vel_base=68, vel_spread=10, step_beats=0.75, fill=0.78,
     ),
+}
+
+# BPM multiplier per mood at MOOD_TEMPO = 1.0.
+# Values reflect conventional associations between emotion and musical tempo.
+_MOOD_BPM_FACTORS: dict[str, float] = {
+    'happiness': 1.08,   # bright, energetic
+    'sadness':   0.80,   # heavy, slow
+    'anger':     1.18,   # driven, fast
+    'fear':      1.06,   # nervous energy, slight rush
+    'surprise':  1.10,   # sudden burst
+    'disgust':   0.88,   # reluctant, dragging
+    'contempt':  0.93,   # detached, unhurried
+    'neutral':   1.00,   # baseline — no change
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -363,6 +378,13 @@ def build_chorus(final: bool = False) -> list:
 # Playback
 # ──────────────────────────────────────────────────────────────────────────────
 
+def _mood_beat(base_beat: float) -> float:
+    """Return beat duration (seconds) adjusted for the current mood tempo scaling."""
+    factor = _MOOD_BPM_FACTORS.get(MOOD, 1.0)
+    effective = 1.0 + (factor - 1.0) * MOOD_TEMPO
+    return base_beat / max(effective, 0.1)
+
+
 def _play_bass_note(midiout: rtmidi.MidiOut, pitch: int, beat: float,
                     vel: int, *, alt: int | None = None) -> None:
     """
@@ -409,6 +431,7 @@ def _play_bass_note(midiout: rtmidi.MidiOut, pitch: int, beat: float,
 
 def play_slot_stride(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) -> None:
     """Stride style: bass on beat 1/3, chord voicing on beat 2/4."""
+    beat  = _mood_beat(beat)
     bass, tones = chord_data
     fifth = bass + 7   # perfect fifth — alternate bass tone for variation
     ring  = beat * NOTE_FILL
@@ -435,6 +458,7 @@ def play_slot_boogie(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) ->
       Beat 1: bass root (octave 2)  — variation may swap to sixth or add passing note
       Beat 2: bass fifth (root + 7, octave 2) + chord stab (right hand)
     """
+    beat  = _mood_beat(beat)
     bass, tones = chord_data
     fifth = bass + 7      # perfect fifth above the root
     sixth = bass + 9      # major sixth — idiomatic boogie walking-bass colour
@@ -520,7 +544,7 @@ def melody_thread_func(midiout: rtmidi.MidiOut, beat: float) -> None:
             continue
 
         params = MOOD_PARAMS[mood]
-        step   = beat * params['step_beats']
+        step   = _mood_beat(beat) * params['step_beats']
         ring   = step * params['fill']
         gap    = step * (1.0 - params['fill'])
 
@@ -600,7 +624,10 @@ def network_listener_func(port: int) -> None:
                         if word in _MOOD_ALIASES:
                             with _mood_lock:
                                 MOOD = _MOOD_ALIASES[word]
-                            print(f"[net] Mood \u2192 {MOOD}")
+                            factor = _MOOD_BPM_FACTORS.get(MOOD, 1.0)
+                            eff_bpm = round(BPM * (1.0 + (factor - 1.0) * MOOD_TEMPO))
+                            tempo_note = f"  (tempo → {eff_bpm} BPM)" if MOOD_TEMPO > 0 else ""
+                            print(f"[net] Mood \u2192 {MOOD}{tempo_note}")
                 except socket.timeout:
                     continue
                 except OSError:
@@ -707,6 +734,12 @@ def parse_args() -> argparse.Namespace:
              f"passing note (beat subdivided into two eighths) or substituting the "
              f"root with an alternate chord tone (fifth in stride, sixth in boogie).",
     )
+    p.add_argument(
+        "--mood-tempo", type=float, default=DEFAULT_MOOD_TEMPO, metavar="F",
+        help=f"Scale of mood\u2019s effect on tempo, 0.0\u20131.0 (default: {DEFAULT_MOOD_TEMPO}). "
+             f"At 0.0 mood never changes BPM; at 1.0 the full per-mood multiplier "
+             f"applies (e.g. anger \u00d71.18, sadness \u00d70.80, neutral \u00d71.00).",
+    )
     args = p.parse_args()
     # Validation
     if args.bpm < 20 or args.bpm > 300:
@@ -721,6 +754,8 @@ def parse_args() -> argparse.Namespace:
         p.error("--note-fill must be between 0.0 (exclusive) and 1.0 (inclusive)")
     if not (0.0 <= args.bass_variation <= 1.0):
         p.error("--bass-variation must be between 0.0 and 1.0")
+    if not (0.0 <= args.mood_tempo <= 1.0):
+        p.error("--mood-tempo must be between 0.0 and 1.0")
     if args.key is not None and args.key not in KEY_SEMITONES:
         p.error(f"--key '{args.key}' is not recognised. Valid values: {valid_keys}")
     # Normalise style aliases
@@ -751,7 +786,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     global BPM, LOOPS, PORT, CHANNEL, PROGRAM, VEL_BASS, VEL_CHORD, NOTE_FILL
-    global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION
+    global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION, MOOD_TEMPO
     global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD
 
     args = parse_args()
@@ -770,6 +805,7 @@ def main() -> None:
     NET_PORT       = args.net_port
     MOOD           = args.mood
     BASS_VARIATION = args.bass_variation
+    MOOD_TEMPO     = args.mood_tempo
     ref_key  = CHANGES_REF_KEY[CHANGES]
     KEY      = args.key if args.key is not None else ref_key
     TRANSPOSE = (KEY_SEMITONES[KEY] - KEY_SEMITONES[ref_key]) % 12
@@ -785,7 +821,9 @@ def main() -> None:
         'rhythm': 'Rhythm Changes', 'blues': 'Blues', 'coltrane': 'Coltrane Changes'
     }[CHANGES]
     loop_desc = f"{LOOPS} chorus{'es' if LOOPS != 1 else ''}" if LOOPS else "\u221e (Ctrl+C to stop)"
-    print(f"{changes_label} \u2014 {KEY} \u2014 {BPM} BPM \u2014 {STYLE} \u2014 {loop_desc}")
+    eff_bpm = round(BPM * (1.0 + (_MOOD_BPM_FACTORS.get(MOOD, 1.0) - 1.0) * MOOD_TEMPO))
+    bpm_str = f"{BPM} BPM" if eff_bpm == BPM else f"{BPM} BPM \u2192 {eff_bpm} BPM ({MOOD})"
+    print(f"{changes_label} \u2014 {KEY} \u2014 {bpm_str} \u2014 {STYLE} \u2014 {loop_desc}")
     print(f"Mood: {MOOD}  |  melody ch: {MELODY_CHANNEL + 1}  |  accompaniment ch: {CHANNEL + 1}\n")
 
     net_thread = threading.Thread(

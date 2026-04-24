@@ -216,6 +216,7 @@ python rhythm_changes.py [options]
   --net-port PORT      TCP port for mood messages (default: 3000)
   --mood MOOD          Starting mood (default: happiness)
   --bass-variation F   Bass-line variation amount 0.0–1.0 (default: 0.0)
+  --mood-tempo F       Scale of mood’s effect on tempo 0.0–1.0 (default: 0.0)
 
 Examples tried during session:
   python rhythm_changes.py --key Eb --loops 2 --bpm 200
@@ -284,6 +285,45 @@ Implementation:
 Examples:
   python rhythm_changes.py --bass-variation 0.3
   python rhythm_changes.py --style boogie-woogie --bass-variation 0.5
+
+--------------------------------------------------------------------------------
+STEP 9 — --mood-tempo parameter
+--------------------------------------------------------------------------------
+The mood now optionally influences the playback tempo as well as the melody
+character. A new scalar parameter controls how strongly the mood bends the BPM.
+
+New CLI parameter:
+  --mood-tempo F   float 0.0–1.0 (default: 0.0 = no tempo effect)
+
+Per-mood BPM multipliers (_MOOD_BPM_FACTORS) at MOOD_TEMPO = 1.0:
+  anger      ×1.18   driven, fast
+  surprise   ×1.10   sudden burst
+  happiness  ×1.08   bright, energetic
+  fear       ×1.06   nervous energy
+  neutral    ×1.00   baseline — no change
+  contempt   ×0.93   detached, unhurried
+  disgust    ×0.88   reluctant, dragging
+  sadness    ×0.80   heavy, slow
+
+At intermediate values the multiplier is interpolated linearly between 1.0
+(no effect) and the full factor. For example, --mood-tempo 0.5 with anger
+gives an effective multiplier of ×1.09 (half of the ×1.18 deviation from 1.0).
+
+Implementation:
+  _mood_beat(base_beat) — helper that returns the mood-adjusted quarter-beat
+    duration. Called at the start of play_slot_stride(), play_slot_boogie(),
+    and each melody step in melody_thread_func(). The global BPM is never
+    mutated; the scaling lives entirely in the timing arithmetic.
+  MOOD_TEMPO global set from args.mood_tempo in main().
+
+When the mood changes at runtime (via TCP), the new tempo takes effect
+immediately on the next beat. The startup header prints the resolved BPM
+when it differs from the base value (e.g. “130 BPM → 153 BPM (anger)”).
+The [net] listener also logs the effective BPM on each mood change.
+
+Examples:
+  python rhythm_changes.py --mood anger --mood-tempo 1.0
+  python rhythm_changes.py --mood sadness --mood-tempo 0.5 --bpm 140
 
 ================================================================================
 END OF LOG
