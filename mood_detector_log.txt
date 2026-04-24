@@ -1,0 +1,186 @@
+
+================================================================================
+SESSION LOG — Webcam Mood Detector
+Date   : April 24, 2026
+File   : mood_detector.py
+================================================================================
+
+OVERVIEW
+--------
+Built a real-time facial emotion detection program that reads from a webcam,
+classifies the visible face into one of 8 moods, and forwards mood changes as
+TCP messages to a PureData [netreceive] object (or directly to rhythm_changes.py).
+The program is designed to work in tandem with rhythm_changes.py, which listens
+on port 3000 and uses the mood to shape its improvised melody.
+
+Detected moods: happiness · sadness · anger · fear · surprise · disgust · contempt · neutral
+
+Output file: mood_detector.py
+
+--------------------------------------------------------------------------------
+DESIGN DECISIONS
+--------------------------------------------------------------------------------
+
+Available vision resources on this machine:
+  - llava:34b         (20 GB, Ollama — vision LLM, already pulled)
+  - gemma3:12b        (8.1 GB, Ollama — vision LLM, already pulled)
+  - gemma3:27b        (17 GB, Ollama — vision LLM, already pulled)
+  - deepface          (not yet installed, but pip-installable)
+  - opencv-python     (not yet installed, but pip-installable)
+
+Two backends were implemented so the program works regardless of whether
+deepface/TensorFlow are installed:
+
+  Backend 1: deepface (default, recommended)
+    - Uses the DeepFace library with a pre-trained FER emotion model.
+    - Fast enough for near real-time use (~5–10 FPS analysis rate).
+    - Returns per-emotion confidence percentages.
+    - Requires:  pip install opencv-python deepface tf-keras
+
+  Backend 2: ollama
+    - Sends a base64-encoded JPEG of the frame to a local Ollama vision model.
+    - Default model: gemma3:12b (already pulled, 8.1 GB).
+    - Slower (2–10 s per frame) but requires zero additional pip packages
+      beyond opencv-python.
+    - Prompt engineering: asks the model to choose exactly one word from the
+      7-emotion vocabulary. First token of the response is parsed.
+    - Override model with: --ollama-model llava:34b
+
+--------------------------------------------------------------------------------
+ARCHITECTURE
+--------------------------------------------------------------------------------
+
+Threads:
+  main thread        — OpenCV webcam capture loop, debounce logic,
+                       PureData TCP send, on-screen overlay rendering
+  analysis-worker    — Pulls frames from a size-1 queue, runs the chosen
+                       backend, writes result to _result dict under a lock
+  net-client (per)   — (PDSender) handles each TCP send to PureData
+
+Shared state:
+  _frame_q           — queue.Queue(maxsize=1): always holds the most recent
+                       frame; older frames are dropped automatically
+  _result            — {'mood': str|None, 'confidence': float}, protected
+                       by _result_lock
+  _stop_evt          — threading.Event() for clean shutdown
+
+--------------------------------------------------------------------------------
+KEY FEATURES
+--------------------------------------------------------------------------------
+
+Debounce:
+  A mood change is only announced after --debounce (default: 2) consecutive
+  identical readings. This prevents a single misclassified frame from
+  triggering a brief spurious mood change in PureData and the synthesiser.
+
+PureData TCP protocol:
+  PDSender maintains a persistent TCP connection.
+  Message format:   "happiness ;\n"
+  PureData receives this via [netreceive PORT 1] which parses it as a symbol.
+  If the connection is lost, PDSender reconnects automatically on the next send.
+
+  PureData patch example:
+    [netreceive 3001 1]
+    |
+    [print]           ← prints e.g.: symbol happiness
+
+On-screen overlay (--no-display disables it):
+  - Mood name in a color unique to each emotion
+  - Confidence percentage bar (DeepFace backend)
+  - Green/red dot indicating PureData connection status
+
+DeepFace pre-warming:
+  On startup the analysis worker sends a blank 64×64 black frame through
+  DeepFace. This forces TensorFlow and the model weights to load before
+  the first real frame arrives, avoiding a multi-second stall in the live loop.
+
+--------------------------------------------------------------------------------
+EMOTION LABEL MAPPING
+--------------------------------------------------------------------------------
+
+DeepFace labels → program labels:
+  'happy'   → happiness
+  'sad'     → sadness
+  'angry'   → anger
+  'fear'    → fear
+  'surprise'→ surprise
+  'disgust' → disgust
+  'neutral' → neutral    ← neutral is now a first-class mood in rhythm_changes.py
+
+The 8-mood Ollama prompt constrains the model to output exactly one of
+the canonical mood names, so no mapping is needed for that backend.
+
+--------------------------------------------------------------------------------
+COMMAND-LINE INTERFACE
+--------------------------------------------------------------------------------
+
+python mood_detector.py [options]
+
+  --pd-host HOST          PureData netreceive host          (default: 127.0.0.1)
+  --pd-port PORT          PureData netreceive TCP port       (default: 3001)
+  --camera N              Webcam device index                (default: 0)
+  --interval F            Seconds between analyses           (default: 0.5)
+  --confidence F          Min DeepFace confidence % to accept(default: 25.0)
+  --debounce N            Consecutive readings before change  (default: 2)
+  --backend BACKEND       deepface | ollama                  (default: deepface)
+  --ollama-model MODEL    Ollama vision model                (default: gemma3:12b)
+  --ollama-url URL        Ollama API base URL                (default: http://localhost:11434)
+  --no-display            Headless mode (no OpenCV window)
+
+--------------------------------------------------------------------------------
+INTEGRATION WITH rhythm_changes.py
+--------------------------------------------------------------------------------
+
+These two programs are designed to run simultaneously:
+
+  Terminal 1:
+    python rhythm_changes.py --net-port 3000 --mood happiness
+
+  Terminal 2:
+    python mood_detector.py --pd-port 3000
+
+mood_detector.py detects emotions from the webcam and sends the mood name to
+the TCP port that rhythm_changes.py is listening on. rhythm_changes.py then
+adjusts its improvisatory melody in real time to reflect the detected emotion.
+
+Port alignment:
+  mood_detector.py  sends   → port 3000  (or whatever --pd-port is set to)
+  rhythm_changes.py listens → port 3000  (--net-port)
+
+Note: in this session mood_detector.py defaults to port 3001 (playing safe
+with PureData), so when piping directly into rhythm_changes.py both
+--pd-port and --net-port should be set to the same value.
+
+--------------------------------------------------------------------------------
+INSTALL NOTES
+--------------------------------------------------------------------------------
+
+Minimal (ollama backend only):
+  pip install opencv-python
+
+Full (deepface backend, recommended):
+  pip install opencv-python deepface tf-keras
+
+Models required for ollama backend (already pulled on this machine):
+  gemma3:12b   8.1 GB   (default)
+  llava:34b    20 GB    (optional, higher accuracy)
+
+--------------------------------------------------------------------------------
+UPDATE — Synced to rhythm_changes.py 8-mood vocabulary
+--------------------------------------------------------------------------------
+After rhythm_changes.py gained a neutral mood (Step 7 in log.txt), mood_detector.py
+was updated to match:
+
+  MOODS frozenset      — added 'neutral' (was 7 moods, now 8)
+  DEEPFACE_MAP         — 'neutral' → 'neutral'  (was → 'contempt')
+  MOOD_COLORS          — added 'neutral': (200, 200, 200)  (light grey)
+  Ollama prompt        — lists all 8 moods including neutral
+  Module docstring     — updated emotion list
+
+The previous workaround (routing DeepFace's 'neutral' label to 'contempt' as the
+closest Ekman substitute) is no longer needed now that neutral is a dedicated mood
+with its own MOOD_PARAMS entry in rhythm_changes.py.
+
+================================================================================
+END OF LOG
+================================================================================
