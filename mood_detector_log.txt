@@ -203,6 +203,28 @@ Changes in mood_detector.py:
   PDSender.send() is reused for face tokens; the same connection carries
     both mood names and face-presence signals.
 
+--------------------------------------------------------------------------------
+UPDATE — face_off on shutdown + enforce_detection fix
+--------------------------------------------------------------------------------
+Two follow-up fixes to the face-gating feature:
+
+1. face_off sent on shutdown:
+   sender.send('face_off') is now called in the finally block before
+   sender.close(), so rhythm_changes.py is always silenced cleanly when
+   mood_detector exits (Ctrl+C, q, or Esc).
+
+2. enforce_detection=True in _analyze_deepface:
+   The DeepFace call now uses enforce_detection=True instead of False.
+   With enforce_detection=False, DeepFace analyses the whole image even
+   when no face is present and almost always returns a dominant emotion,
+   meaning face_present was effectively stuck True and face_off was never
+   sent during a live session.
+   With enforce_detection=True, DeepFace raises ValueError when no face
+   is found; that exception is caught and returns (None, 0.0), correctly
+   setting face_present=False and triggering the face_off send.
+   The pre-warm call on startup still uses enforce_detection=False
+   (intentionally: the blank frame has no face by design).
+
 ================================================================================
 END OF LOG
 ================================================================================

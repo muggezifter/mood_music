@@ -149,13 +149,18 @@ class PDSender:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _analyze_deepface(frame, min_conf: float) -> tuple[str | None, float]:
-    """Returns (mood, confidence%) using DeepFace, or (None, 0.0)."""
+    """Returns (mood, confidence%) using DeepFace, or (None, 0.0).
+
+    Uses enforce_detection=True so DeepFace raises ValueError when no face is
+    present.  Catching that is the only reliable way to get a 'no face' signal;
+    with enforce_detection=False DeepFace always returns a result regardless.
+    """
     try:
         from deepface import DeepFace  # lazy: loads TF on first call
         results  = DeepFace.analyze(
             img_path=frame,
             actions=['emotion'],
-            enforce_detection=False,
+            enforce_detection=True,
             silent=True,
         )
         emotions = results[0]['emotion']          # {label: confidence_pct}
@@ -164,6 +169,9 @@ def _analyze_deepface(frame, min_conf: float) -> tuple[str | None, float]:
         if conf < min_conf:
             return None, conf
         return DEEPFACE_MAP.get(dominant), conf
+    except ValueError:
+        # DeepFace could not detect a face in the frame.
+        return None, 0.0
     except Exception:
         return None, 0.0
 
@@ -232,6 +240,8 @@ def analysis_worker(args: argparse.Namespace) -> None:
             import numpy as np
             from deepface import DeepFace
             blank = np.zeros((64, 64, 3), dtype='uint8')
+            # enforce_detection=False here only: blank frame has no face by
+            # design; we just want TF/model weights loaded before the live loop.
             DeepFace.analyze(img_path=blank, actions=['emotion'],
                              enforce_detection=False, silent=True)
         except Exception:
@@ -457,6 +467,7 @@ def main() -> None:
         worker.join(timeout=3.0)
         cap.release()
         cv2.destroyAllWindows()
+        sender.send('face_off')
         sender.close()
         print("Stopped.")
 
