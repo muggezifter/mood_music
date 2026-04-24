@@ -215,6 +215,7 @@ python rhythm_changes.py [options]
   --melody-program N   GM program for melody (default: 66 = Tenor Sax)
   --net-port PORT      TCP port for mood messages (default: 3000)
   --mood MOOD          Starting mood (default: happiness)
+  --bass-variation F   Bass-line variation amount 0.0–1.0 (default: 0.0)
 
 Examples tried during session:
   python rhythm_changes.py --key Eb --loops 2 --bpm 200
@@ -245,6 +246,44 @@ Two further refinements made after the main session:
    Tenor Sax (GM 67, program 66).  The saxophone sits in a more idiomatic
    jazz register and blends better with stride/boogie accompaniment.
    Constant: DEFAULT_MELODY_PROGRAM = 66
+
+--------------------------------------------------------------------------------
+STEP 8 — --bass-variation parameter
+--------------------------------------------------------------------------------
+Added randomised bass-line variation controlled by a single probability knob.
+
+New CLI parameter:
+  --bass-variation F   float 0.0–1.0 (default: 0.0 = no variation)
+
+On every bass-root beat, a random check fires with probability equal to the
+parameter value. If it passes, one of two variation types is chosen at random:
+
+  1. Chromatic passing note (subdivision):
+     The beat is split into two equal eighth notes.
+     First eighth : the main bass root at full velocity.
+     Second eighth: one semitone up or down (chosen randomly), played ~18
+                    velocity units softer — a ghost passing tone.
+     Total duration is unchanged; timing stays locked.
+
+  2. Alternate chord tone (substitution):
+     The root is replaced for the whole beat by an idiomatic alternate:
+       stride style       → perfect fifth (root + 7 semitones)
+       boogie-woogie      → major sixth  (root + 9 semitones)
+     These are the most natural bass substitutions in each style.
+
+Beats that are not bass-root beats (the chord voicing on beat 2/4 in stride,
+or the fifth + chord stab on beat 2 in boogie-woogie) are never affected.
+
+Implementation:
+  _play_bass_note(midiout, pitch, beat, vel, *, alt=None)
+    Internal helper that encapsulates the variation logic.
+    Called from play_slot_stride() and play_slot_boogie() in place of the
+    previous inline note_on / time.sleep / note_off sequence.
+  BASS_VARIATION global set from args.bass_variation in main().
+
+Examples:
+  python rhythm_changes.py --bass-variation 0.3
+  python rhythm_changes.py --style boogie-woogie --bass-variation 0.5
 
 ================================================================================
 END OF LOG

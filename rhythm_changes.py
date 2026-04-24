@@ -43,6 +43,7 @@ DEFAULT_MELODY_CHANNEL  = 1      # 0-indexed → MIDI channel 2
 DEFAULT_MELODY_PROGRAM  = 66     # GM 67 = Tenor Sax
 DEFAULT_NET_PORT        = 3000   # TCP port for PureData netsend
 DEFAULT_MOOD            = 'happiness'
+DEFAULT_BASS_VARIATION  = 0.0    # 0.0 = no variation, 1.0 = maximum
 
 # Module-level names kept for use by helper functions; set in main() from args.
 BPM       = DEFAULT_BPM
@@ -61,6 +62,7 @@ MELODY_CHANNEL = DEFAULT_MELODY_CHANNEL
 MELODY_PROGRAM = DEFAULT_MELODY_PROGRAM
 NET_PORT       = DEFAULT_NET_PORT
 MOOD           = DEFAULT_MOOD
+BASS_VARIATION = DEFAULT_BASS_VARIATION
 
 # Natural ("home") key for each changes type; used to compute TRANSPOSE.
 CHANGES_REF_KEY: dict[str, str] = {
@@ -361,17 +363,59 @@ def build_chorus(final: bool = False) -> list:
 # Playback
 # ──────────────────────────────────────────────────────────────────────────────
 
-def play_slot_stride(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) -> None:
-    """Stride style: bass on beat 1/3, chord voicing on beat 2/4."""
-    bass, tones = chord_data
+def _play_bass_note(midiout: rtmidi.MidiOut, pitch: int, beat: float,
+                    vel: int, *, alt: int | None = None) -> None:
+    """
+    Play one bass note lasting `beat` seconds, with optional variation.
+
+    When BASS_VARIATION > 0 a random check fires; if it passes, either:
+      • subdivide the beat into two eighth notes — main pitch then a chromatic
+        passing note one semitone up or down (played ~18 velocity softer), or
+      • substitute the root with `alt` for the full beat (e.g. the fifth or
+        the sixth), giving the bass line a more varied, walking quality.
+    Total elapsed time is always exactly `beat` seconds.
+    """
     ring = beat * NOTE_FILL
     gap  = beat * (1.0 - NOTE_FILL)
 
-    # Beat 1 / 3 — bass
-    note_on(midiout, bass, VEL_BASS)
-    time.sleep(ring)
-    note_off(midiout, bass)
-    time.sleep(gap)
+    if BASS_VARIATION == 0.0 or random.random() > BASS_VARIATION:
+        note_on(midiout, pitch, vel)
+        time.sleep(ring)
+        note_off(midiout, pitch)
+        time.sleep(gap)
+        return
+
+    if alt is not None and random.random() < 0.5:
+        # Substitute: alternate chord tone for the full beat
+        note_on(midiout, alt, vel)
+        time.sleep(ring)
+        note_off(midiout, alt)
+        time.sleep(gap)
+    else:
+        # Subdivide: main pitch on first eighth, chromatic passing on second
+        half = beat / 2.0
+        h_ring = half * NOTE_FILL
+        h_gap  = half * (1.0 - NOTE_FILL)
+        passing = pitch + random.choice([-1, 1])
+        note_on(midiout, pitch, vel)
+        time.sleep(h_ring)
+        note_off(midiout, pitch)
+        time.sleep(h_gap)
+        note_on(midiout, passing, max(40, vel - 18))
+        time.sleep(h_ring)
+        note_off(midiout, passing)
+        time.sleep(h_gap)
+
+
+def play_slot_stride(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) -> None:
+    """Stride style: bass on beat 1/3, chord voicing on beat 2/4."""
+    bass, tones = chord_data
+    fifth = bass + 7   # perfect fifth — alternate bass tone for variation
+    ring  = beat * NOTE_FILL
+    gap   = beat * (1.0 - NOTE_FILL)
+
+    # Beat 1 / 3 — bass (with optional variation)
+    _play_bass_note(midiout, bass, beat, VEL_BASS, alt=fifth)
 
     # Beat 2 / 4 — chord
     for t in tones:
@@ -388,21 +432,19 @@ def play_slot_boogie(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) ->
     chord stab on beat 2/4.
 
     Per half-bar slot (2 beats):
-      Beat 1: bass root (octave 2)
+      Beat 1: bass root (octave 2)  — variation may swap to sixth or add passing note
       Beat 2: bass fifth (root + 7, octave 2) + chord stab (right hand)
     """
     bass, tones = chord_data
     fifth = bass + 7      # perfect fifth above the root
+    sixth = bass + 9      # major sixth — idiomatic boogie walking-bass colour
     ring = beat * NOTE_FILL
     gap  = beat * (1.0 - NOTE_FILL)
 
-    # Beat 1 — root in bass
-    note_on(midiout, bass, VEL_BASS)
-    time.sleep(ring)
-    note_off(midiout, bass)
-    time.sleep(gap)
+    # Beat 1 — root in bass (with optional variation; alt = sixth for boogie colour)
+    _play_bass_note(midiout, bass, beat, VEL_BASS, alt=sixth)
 
-    # Beat 2 — fifth in bass + chord stab
+    # Beat 2 — fifth in bass + chord stab (timing coupled; no subdivision here)
     note_on(midiout, fifth, VEL_BASS)
     for t in tones:
         note_on(midiout, t, VEL_CHORD)
@@ -658,6 +700,13 @@ def parse_args() -> argparse.Namespace:
         help=f"Starting mood: happiness | sadness | anger | fear | "
              f"surprise | disgust | contempt | neutral  (default: {DEFAULT_MOOD})",
     )
+    p.add_argument(
+        "--bass-variation", type=float, default=DEFAULT_BASS_VARIATION, metavar="F",
+        help=f"Bass-line variation amount 0.0–1.0 (default: {DEFAULT_BASS_VARIATION}). "
+             f"Controls the probability per bass beat of either adding a chromatic "
+             f"passing note (beat subdivided into two eighths) or substituting the "
+             f"root with an alternate chord tone (fifth in stride, sixth in boogie).",
+    )
     args = p.parse_args()
     # Validation
     if args.bpm < 20 or args.bpm > 300:
@@ -670,6 +719,8 @@ def parse_args() -> argparse.Namespace:
         p.error("--vel-chord must be between 0 and 127")
     if not (0.0 < args.note_fill <= 1.0):
         p.error("--note-fill must be between 0.0 (exclusive) and 1.0 (inclusive)")
+    if not (0.0 <= args.bass_variation <= 1.0):
+        p.error("--bass-variation must be between 0.0 and 1.0")
     if args.key is not None and args.key not in KEY_SEMITONES:
         p.error(f"--key '{args.key}' is not recognised. Valid values: {valid_keys}")
     # Normalise style aliases
@@ -700,7 +751,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     global BPM, LOOPS, PORT, CHANNEL, PROGRAM, VEL_BASS, VEL_CHORD, NOTE_FILL
-    global KEY, TRANSPOSE, STYLE, CHANGES
+    global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION
     global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD
 
     args = parse_args()
@@ -718,6 +769,7 @@ def main() -> None:
     MELODY_PROGRAM = args.melody_program
     NET_PORT       = args.net_port
     MOOD           = args.mood
+    BASS_VARIATION = args.bass_variation
     ref_key  = CHANGES_REF_KEY[CHANGES]
     KEY      = args.key if args.key is not None else ref_key
     TRANSPOSE = (KEY_SEMITONES[KEY] - KEY_SEMITONES[ref_key]) % 12
