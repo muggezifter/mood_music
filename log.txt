@@ -509,6 +509,40 @@ Melody tension_w adjustments for affected moods:
   surprise  tension_w 0.25 → 0.30, scale_w 0.30 → 0.25
              (more unexpected upper-structure notes in the melody)
 
+--------------------------------------------------------------------------------
+STEP 14 — Melody velocity boost for soft moods + accompaniment humanisation
+--------------------------------------------------------------------------------
+Date: April 29, 2026
+
+Two mixing fixes to make the melody audible and the piano feel more human.
+
+1. Melody velocity boost (sadness, disgust, neutral)
+   These three moods had vel_base values at or below VEL_CHORD (64), causing
+   the melody to be buried under the chord voicing.  Updated values:
+
+     sadness  vel_base 52 → 74, vel_spread 12 → 14   range: 60–88
+     disgust  vel_base 58 → 76, vel_spread 10 → 12   range: 64–88
+     neutral  vel_base 68 → 80, vel_spread 10 → 12   range: 68–92
+
+   All three remain considerably softer than happiness (90) and anger (108),
+   preserving emotional contrast while ensuring the melody can be heard.
+
+2. Accompaniment velocity humanisation
+   Every note_on call in the piano accompaniment now passes through a new
+   helper _hv() instead of using the raw VEL_BASS / VEL_CHORD constants:
+
+     _hv(vel, spread=7) → max(1, min(127, vel + randint(-spread, spread)))
+
+   Each note receives its own independent ±7 offset, so:
+     • Bass notes, chord tones and colour tones all vary independently.
+     • Inner chord voices land with slightly unequal weight, as a real
+       pianist's fingers would.
+     • The overall dynamic character (loud/soft per mood) is unchanged
+       because the offsets are symmetric around the target velocity.
+
+   Applied in: play_slot_stride() and play_slot_boogie() — all note_on
+   calls for bass, chord tones, fifth (boogie), and colour tones.
+
 ================================================================================
 END OF LOG
 ================================================================================

@@ -129,7 +129,7 @@ MOOD_PARAMS: dict[str, dict] = {
     'sadness': dict(
         octave_lo=3, octave_hi=5, density=0.40, scale='minor',
         chord_w=0.38, scale_w=0.50, tension_w=0.12,   # extra blue notes
-        vel_base=52, vel_spread=12, step_beats=1.25, fill=0.95,
+        vel_base=74, vel_spread=14, step_beats=1.25, fill=0.95,
         accomp_dissonance=0.10,
     ),
     'anger': dict(
@@ -153,7 +153,7 @@ MOOD_PARAMS: dict[str, dict] = {
     'disgust': dict(
         octave_lo=3, octave_hi=5, density=0.38, scale='chromatic',
         chord_w=0.18, scale_w=0.28, tension_w=0.54,
-        vel_base=58, vel_spread=10, step_beats=0.75, fill=0.60,
+        vel_base=76, vel_spread=12, step_beats=0.75, fill=0.60,
         accomp_dissonance=0.55,
     ),
     'contempt': dict(
@@ -165,7 +165,7 @@ MOOD_PARAMS: dict[str, dict] = {
     'neutral': dict(
         octave_lo=4, octave_hi=5, density=0.50, scale='major',
         chord_w=0.50, scale_w=0.45, tension_w=0.05,
-        vel_base=68, vel_spread=10, step_beats=0.75, fill=0.78,
+        vel_base=80, vel_spread=12, step_beats=0.75, fill=0.78,
         accomp_dissonance=0.00,
     ),
 }
@@ -465,6 +465,11 @@ def _play_bass_note(midiout: rtmidi.MidiOut, pitch: int, beat: float,
         time.sleep(h_gap)
 
 
+def _hv(vel: int, spread: int = 7) -> int:
+    """Return vel nudged by a small random offset to humanise the accompaniment."""
+    return max(1, min(127, vel + random.randint(-spread, spread)))
+
+
 def play_slot_stride(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) -> None:
     """Stride style: bass on beat 1/3, chord voicing on beat 2/4."""
     beat  = _mood_beat(beat)
@@ -474,16 +479,16 @@ def play_slot_stride(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) ->
     gap   = beat * (1.0 - NOTE_FILL)
 
     # Beat 1 / 3 — bass (with optional variation)
-    _play_bass_note(midiout, bass, beat, VEL_BASS, alt=fifth)
+    _play_bass_note(midiout, bass, beat, _hv(VEL_BASS), alt=fifth)
 
     # Beat 2 / 4 — chord (+ optional colour/tension tone for dissonant moods)
     colour = (_colour_tone(bass, tones)
               if random.random() < MOOD_PARAMS[MOOD]['accomp_dissonance']
               else None)
     for t in tones:
-        note_on(midiout, t, VEL_CHORD)
+        note_on(midiout, t, _hv(VEL_CHORD))
     if colour is not None:
-        note_on(midiout, colour, max(1, VEL_CHORD - 14))
+        note_on(midiout, colour, max(1, _hv(VEL_CHORD - 14)))
     time.sleep(ring)
     for t in tones:
         note_off(midiout, t)
@@ -509,17 +514,17 @@ def play_slot_boogie(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) ->
     gap  = beat * (1.0 - NOTE_FILL)
 
     # Beat 1 — root in bass (with optional variation; alt = sixth for boogie colour)
-    _play_bass_note(midiout, bass, beat, VEL_BASS, alt=sixth)
+    _play_bass_note(midiout, bass, beat, _hv(VEL_BASS), alt=sixth)
 
     # Beat 2 — fifth in bass + chord stab (+ optional colour/tension tone)
     colour = (_colour_tone(bass, tones)
               if random.random() < MOOD_PARAMS[MOOD]['accomp_dissonance']
               else None)
-    note_on(midiout, fifth, VEL_BASS)
+    note_on(midiout, fifth, _hv(VEL_BASS))
     for t in tones:
-        note_on(midiout, t, VEL_CHORD)
+        note_on(midiout, t, _hv(VEL_CHORD))
     if colour is not None:
-        note_on(midiout, colour, max(1, VEL_CHORD - 14))
+        note_on(midiout, colour, max(1, _hv(VEL_CHORD - 14)))
     time.sleep(ring)
     note_off(midiout, fifth)
     for t in tones:
