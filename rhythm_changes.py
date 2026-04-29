@@ -110,6 +110,8 @@ _play_event.set()               # playing by default; cleared on 'face_off'
 # vel_base / vel_spread : velocity = base + randint(-spread, spread)
 # step_beats            : melody step in quarter beats (0.25 = ♬, 0.5 = ♪, 1.0 = ♩)
 # fill                  : note-on fraction of the step duration
+# accomp_dissonance     : probability 0–1 of adding a chromatic colour tone to the
+#                         accompaniment chord voicing on any given beat
 
 SCALE_INTERVALS: dict[str, list] = {
     'major':    [0, 2, 4, 5, 7, 9, 11],
@@ -122,41 +124,49 @@ MOOD_PARAMS: dict[str, dict] = {
         octave_lo=4, octave_hi=6, density=0.75, scale='major',
         chord_w=0.55, scale_w=0.38, tension_w=0.07,
         vel_base=90, vel_spread=18, step_beats=0.5, fill=0.80,
+        accomp_dissonance=0.00,
     ),
     'sadness': dict(
         octave_lo=3, octave_hi=5, density=0.40, scale='minor',
-        chord_w=0.38, scale_w=0.54, tension_w=0.08,
+        chord_w=0.38, scale_w=0.50, tension_w=0.12,   # extra blue notes
         vel_base=52, vel_spread=12, step_beats=1.25, fill=0.95,
+        accomp_dissonance=0.10,
     ),
     'anger': dict(
         octave_lo=4, octave_hi=6, density=0.88, scale='chromatic',
         chord_w=0.28, scale_w=0.28, tension_w=0.44,
         vel_base=108, vel_spread=14, step_beats=0.25, fill=0.65,
+        accomp_dissonance=0.50,
     ),
     'fear': dict(
         octave_lo=3, octave_hi=6, density=0.30, scale='chromatic',
         chord_w=0.25, scale_w=0.35, tension_w=0.40,
         vel_base=48, vel_spread=38, step_beats=0.5, fill=0.55,
+        accomp_dissonance=0.45,
     ),
     'surprise': dict(
         octave_lo=3, octave_hi=7, density=0.60, scale='major',
-        chord_w=0.45, scale_w=0.30, tension_w=0.25,
+        chord_w=0.45, scale_w=0.25, tension_w=0.30,   # more unexpected colour
         vel_base=82, vel_spread=42, step_beats=0.5, fill=0.72,
+        accomp_dissonance=0.20,
     ),
     'disgust': dict(
         octave_lo=3, octave_hi=5, density=0.38, scale='chromatic',
         chord_w=0.18, scale_w=0.28, tension_w=0.54,
         vel_base=58, vel_spread=10, step_beats=0.75, fill=0.60,
+        accomp_dissonance=0.55,
     ),
     'contempt': dict(
         octave_lo=4, octave_hi=5, density=0.28, scale='major',
         chord_w=0.55, scale_w=0.40, tension_w=0.05,
         vel_base=62, vel_spread=6, step_beats=1.0, fill=0.38,
+        accomp_dissonance=0.00,
     ),
     'neutral': dict(
         octave_lo=4, octave_hi=5, density=0.50, scale='major',
         chord_w=0.50, scale_w=0.45, tension_w=0.05,
         vel_base=68, vel_spread=10, step_beats=0.75, fill=0.78,
+        accomp_dissonance=0.00,
     ),
 }
 
@@ -387,6 +397,30 @@ def _mood_beat(base_beat: float) -> float:
     return base_beat / max(effective, 0.1)
 
 
+# Semitone offsets from root used for accompaniment colour tones:
+# b9, #9 (Hendrix chord), b5/#11 (tritone), b13
+_COLOUR_INTERVALS = [1, 3, 6, 8]
+
+
+def _colour_tone(bass: int, tones: list[int]) -> int | None:
+    """
+    Return a random chromatic colour/tension pitch in the chord's register.
+    Picks one of b9, #9, b5/#11, b13 above the bass root and places it
+    within the octave range spanned by the existing chord tones.
+    Returns None if no suitable pitch can be placed.
+    """
+    if not tones:
+        return None
+    root_pc = bass % 12
+    pc      = (root_pc + random.choice(_COLOUR_INTERVALS)) % 12
+    lo, hi  = min(tones), max(tones) + 12
+    start   = (lo // 12) * 12 + pc
+    if start < lo:
+        start += 12
+    candidates = [start + 12 * k for k in range(3) if lo <= start + 12 * k <= hi]
+    return random.choice(candidates) if candidates else None
+
+
 def _play_bass_note(midiout: rtmidi.MidiOut, pitch: int, beat: float,
                     vel: int, *, alt: int | None = None) -> None:
     """
@@ -442,12 +476,19 @@ def play_slot_stride(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) ->
     # Beat 1 / 3 — bass (with optional variation)
     _play_bass_note(midiout, bass, beat, VEL_BASS, alt=fifth)
 
-    # Beat 2 / 4 — chord
+    # Beat 2 / 4 — chord (+ optional colour/tension tone for dissonant moods)
+    colour = (_colour_tone(bass, tones)
+              if random.random() < MOOD_PARAMS[MOOD]['accomp_dissonance']
+              else None)
     for t in tones:
         note_on(midiout, t, VEL_CHORD)
+    if colour is not None:
+        note_on(midiout, colour, max(1, VEL_CHORD - 14))
     time.sleep(ring)
     for t in tones:
         note_off(midiout, t)
+    if colour is not None:
+        note_off(midiout, colour)
     time.sleep(gap)
 
 
@@ -470,14 +511,21 @@ def play_slot_boogie(midiout: rtmidi.MidiOut, chord_data: tuple, beat: float) ->
     # Beat 1 — root in bass (with optional variation; alt = sixth for boogie colour)
     _play_bass_note(midiout, bass, beat, VEL_BASS, alt=sixth)
 
-    # Beat 2 — fifth in bass + chord stab (timing coupled; no subdivision here)
+    # Beat 2 — fifth in bass + chord stab (+ optional colour/tension tone)
+    colour = (_colour_tone(bass, tones)
+              if random.random() < MOOD_PARAMS[MOOD]['accomp_dissonance']
+              else None)
     note_on(midiout, fifth, VEL_BASS)
     for t in tones:
         note_on(midiout, t, VEL_CHORD)
+    if colour is not None:
+        note_on(midiout, colour, max(1, VEL_CHORD - 14))
     time.sleep(ring)
     note_off(midiout, fifth)
     for t in tones:
         note_off(midiout, t)
+    if colour is not None:
+        note_off(midiout, colour)
     time.sleep(gap)
 
 

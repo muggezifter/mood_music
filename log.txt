@@ -460,6 +460,55 @@ New state in melody_thread_func():
   rest_steps       int        — steps remaining in forced rest window
   consec_rests     int        — consecutive rest-vote counter
 
+--------------------------------------------------------------------------------
+STEP 13 — Mood-driven dissonance in accompaniment chords + melody tension boost
+--------------------------------------------------------------------------------
+Date: April 29, 2026
+
+For moods that call for it, the accompaniment chord voicing now randomly
+includes an extra chromatic "colour" tension note, and the melody note-pool
+weights for those moods were adjusted to include a higher proportion of
+tension tones.
+
+New MOOD_PARAMS key: accomp_dissonance (float 0.0–1.0)
+  Probability that a colour/tension note is added to the chord stab on any
+  given beat.  Values per mood:
+    happiness  0.00  — clean, diatonic
+    sadness    0.10  — occasional wistful blue note
+    anger      0.50  — half of all chord beats clashing
+    fear       0.45  — unsettling crunch
+    surprise   0.20  — unexpected harmonic twist
+    disgust    0.55  — heaviest dissonance (most chromatically abrasive)
+    contempt   0.00  — dry and empty, no tension
+    neutral    0.00  — plain, no colouring
+
+New constant: _COLOUR_INTERVALS = [1, 3, 6, 8]
+  Semitone offsets from the bass root corresponding to the classic upper-
+  structure tensions used in jazz:
+    1  = b9   (minor ninth)
+    3  = #9   (augmented ninth / Hendrix chord)
+    6  = b5 / #11  (tritone)
+    8  = b13  (minor thirteenth)
+
+New helper: _colour_tone(bass, tones) → int | None
+  Chooses one interval randomly, maps it to a pitch class above the bass
+  root, then finds the closest occurrence within the octave range spanned
+  by the existing chord tones (lo … lo+12).  Returns None if no candidate
+  fits (e.g., the interval lands exactly on an existing tone's octave limit).
+
+Accompaniment changes (play_slot_stride, play_slot_boogie):
+  On the chord-stab beat (beat 2/4 in stride; beat 2 in boogie), _colour_tone
+  is called if a random draw < accomp_dissonance.  The colour note is struck
+  alongside the normal voicing at VEL_CHORD − 14 (soft enough to colour
+  without dominating the voicing) and note-off'd with the rest of the chord.
+  Bass beats are never affected.
+
+Melody tension_w adjustments for affected moods:
+  sadness   tension_w 0.08 → 0.12, scale_w 0.54 → 0.50
+             (more minor-scale colour notes for a bluesier feel)
+  surprise  tension_w 0.25 → 0.30, scale_w 0.30 → 0.25
+             (more unexpected upper-structure notes in the melody)
+
 ================================================================================
 END OF LOG
 ================================================================================
