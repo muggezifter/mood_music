@@ -574,6 +574,41 @@ Examples:
   python rhythm_changes.py --melody-octave 1
   python rhythm_changes.py --mood sadness --melody-vel-boost 15 --melody-octave 1
 
+--------------------------------------------------------------------------------
+STEP 16 — --melody-port: separate MIDI output port for melody
+--------------------------------------------------------------------------------
+Date: April 29, 2026
+
+Added an optional --melody-port parameter so the melody can be sent to a
+different MIDI port than the piano accompaniment, enabling separate routing
+to a hardware synth, software instrument, or DAW track.
+
+New CLI parameter:
+  --melody-port N   integer (no default = not set)
+    When given, opens MIDI port N as a dedicated output for the melody.
+    When omitted, the melody continues to share the accompaniment port
+    (previous behaviour preserved).
+
+New constant / global: DEFAULT_MELODY_PORT = None / MELODY_PORT
+
+New helper: open_melody_output(port) → rtmidi.MidiOut
+  Opens the requested port on a fresh MidiOut instance.  Exits with a
+  clear message if the port index is out of range.  Does not reprint the
+  full port list (already shown by the accompaniment port setup).
+
+New module-level reference: _mel_out (rtmidi.MidiOut | None)
+  Set to the separate MidiOut when --melody-port is given, otherwise
+  aliased to the main midiout.  Used consistently throughout:
+    • play_chorus()       — All Notes Off (CC 123) on face-off pause
+    • melody_thread_func() — all note-on / note-off messages
+    • main()              — program-change setup on startup
+    • finally block       — All Notes Off on exit; separate port is
+                            del'd independently; alias is not (to avoid
+                            closing the accompaniment port twice)
+
+Example:
+  python rhythm_changes.py --melody-port 1
+
 ================================================================================
 END OF LOG
 ================================================================================

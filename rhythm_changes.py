@@ -47,6 +47,7 @@ DEFAULT_BASS_VARIATION  = 0.0    # 0.0 = no variation, 1.0 = maximum
 DEFAULT_MOOD_TEMPO      = 0.0    # 0.0 = mood has no tempo effect, 1.0 = full effect
 DEFAULT_MELODY_VEL_BOOST = 0     # additional velocity added to every melody note
 DEFAULT_MELODY_OCTAVE   = 0     # octave shift for melody: -1 down, 0 none, +1 up
+DEFAULT_MELODY_PORT     = None  # if set, melody uses this separate MIDI port index
 
 # Module-level names kept for use by helper functions; set in main() from args.
 BPM       = DEFAULT_BPM
@@ -69,6 +70,10 @@ BASS_VARIATION = DEFAULT_BASS_VARIATION
 MOOD_TEMPO     = DEFAULT_MOOD_TEMPO
 MELODY_VEL_BOOST = DEFAULT_MELODY_VEL_BOOST
 MELODY_OCTAVE    = DEFAULT_MELODY_OCTAVE
+MELODY_PORT      = DEFAULT_MELODY_PORT
+
+# Set in main(); either the same MidiOut as the accompaniment or a second port.
+_mel_out: 'rtmidi.MidiOut | None' = None
 
 # Natural ("home") key for each changes type; used to compute TRANSPOSE.
 CHANGES_REF_KEY: dict[str, str] = {
@@ -212,6 +217,17 @@ def open_midi_output() -> rtmidi.MidiOut:
     midiout.open_port(PORT)
     print(f"\nOpened port {PORT}: {ports[PORT]}\n")
     return midiout
+
+
+def open_melody_output(port: int) -> rtmidi.MidiOut:
+    """Open a separate MIDI output port for the melody (no port listing printed)."""
+    melout = rtmidi.MidiOut()
+    ports  = melout.get_ports()
+    if port >= len(ports):
+        sys.exit(f"Error: melody port {port} does not exist (max index: {len(ports)-1}).")
+    melout.open_port(port)
+    print(f"Melody output: port {port}: {ports[port]}")
+    return melout
 
 
 def note_on(midiout: rtmidi.MidiOut, pitch: int, velocity: int) -> None:
@@ -562,7 +578,7 @@ def play_chorus(midiout: rtmidi.MidiOut, beat: float,
             if not _play_event.is_set():
                 if not _face_paused:
                     midiout.send_message([0xB0 | CHANNEL,        123, 0])
-                    midiout.send_message([0xB0 | MELODY_CHANNEL, 123, 0])
+                    _mel_out.send_message([0xB0 | MELODY_CHANNEL, 123, 0])
                     print("[play] No face \u2014 paused.", flush=True)
                     _face_paused = True
                 while not _play_event.is_set():
@@ -972,6 +988,12 @@ def parse_args() -> argparse.Namespace:
         help=f"Transpose melody by N octaves: -1 = down, 0 = none, +1 = up "
              f"(default: {DEFAULT_MELODY_OCTAVE}). Allowed values: -2, -1, 0, 1, 2.",
     )
+    p.add_argument(
+        "--melody-port", type=int, default=DEFAULT_MELODY_PORT, metavar="N",
+        help="If set, open this MIDI port index for melody output instead of sharing "
+             "the accompaniment port. Use the port list printed on startup to find "
+             "the right index.",
+    )
     args = p.parse_args()
     # Validation
     if args.bpm < 20 or args.bpm > 300:
@@ -1020,6 +1042,7 @@ def main() -> None:
     global BPM, LOOPS, PORT, CHANNEL, PROGRAM, VEL_BASS, VEL_CHORD, NOTE_FILL
     global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION, MOOD_TEMPO
     global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD, MELODY_VEL_BOOST, MELODY_OCTAVE
+    global MELODY_PORT, _mel_out
 
     args = parse_args()
     BPM            = args.bpm
@@ -1040,6 +1063,7 @@ def main() -> None:
     MOOD_TEMPO     = args.mood_tempo
     MELODY_VEL_BOOST = args.melody_vel_boost
     MELODY_OCTAVE    = args.melody_octave
+    MELODY_PORT      = args.melody_port
     ref_key  = CHANGES_REF_KEY[CHANGES]
     KEY      = args.key if args.key is not None else ref_key
     TRANSPOSE = (KEY_SEMITONES[KEY] - KEY_SEMITONES[ref_key]) % 12
@@ -1049,7 +1073,11 @@ def main() -> None:
     beat    = 60.0 / BPM
     midiout = open_midi_output()
     program_change(midiout, PROGRAM)
-    midiout.send_message([0xC0 | MELODY_CHANNEL, MELODY_PROGRAM])
+    if MELODY_PORT is not None:
+        _mel_out = open_melody_output(MELODY_PORT)
+    else:
+        _mel_out = midiout
+    _mel_out.send_message([0xC0 | MELODY_CHANNEL, MELODY_PROGRAM])
 
     changes_label = {
         'rhythm': 'Rhythm Changes', 'blues': 'Blues', 'coltrane': 'Coltrane Changes'
@@ -1067,7 +1095,7 @@ def main() -> None:
     net_thread.start()
 
     mel_thread = threading.Thread(
-        target=melody_thread_func, args=(midiout, beat),
+        target=melody_thread_func, args=(_mel_out, beat),
         daemon=True, name='melody',
     )
     mel_thread.start()
@@ -1086,7 +1114,9 @@ def main() -> None:
         _stop_event.set()
         mel_thread.join(timeout=2.0)
         midiout.send_message([0xB0 | CHANNEL,        123, 0])
-        midiout.send_message([0xB0 | MELODY_CHANNEL, 123, 0])
+        _mel_out.send_message([0xB0 | MELODY_CHANNEL, 123, 0])
+        if MELODY_PORT is not None:
+            del _mel_out
         del midiout
 
 
