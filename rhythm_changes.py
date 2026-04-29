@@ -45,6 +45,8 @@ DEFAULT_NET_PORT        = 3000   # TCP port for PureData netsend
 DEFAULT_MOOD            = 'happiness'
 DEFAULT_BASS_VARIATION  = 0.0    # 0.0 = no variation, 1.0 = maximum
 DEFAULT_MOOD_TEMPO      = 0.0    # 0.0 = mood has no tempo effect, 1.0 = full effect
+DEFAULT_MELODY_VEL_BOOST = 0     # additional velocity added to every melody note
+DEFAULT_MELODY_OCTAVE   = 0     # octave shift for melody: -1 down, 0 none, +1 up
 
 # Module-level names kept for use by helper functions; set in main() from args.
 BPM       = DEFAULT_BPM
@@ -65,6 +67,8 @@ NET_PORT       = DEFAULT_NET_PORT
 MOOD           = DEFAULT_MOOD
 BASS_VARIATION = DEFAULT_BASS_VARIATION
 MOOD_TEMPO     = DEFAULT_MOOD_TEMPO
+MELODY_VEL_BOOST = DEFAULT_MELODY_VEL_BOOST
+MELODY_OCTAVE    = DEFAULT_MELODY_OCTAVE
 
 # Natural ("home") key for each changes type; used to compute TRANSPOSE.
 CHANGES_REF_KEY: dict[str, str] = {
@@ -753,14 +757,15 @@ def melody_thread_func(midiout: rtmidi.MidiOut, beat: float) -> None:
                 phrase_idx = 0
 
             if phrase and phrase_idx < len(phrase):
-                note = phrase[phrase_idx]
+                note = max(1, min(127, phrase[phrase_idx] + MELODY_OCTAVE * 12))
                 phrase_idx += 1
                 # Save phrase as motif when fully played (#5)
                 if phrase_idx >= len(phrase):
                     motif = list(phrase)
                 vel = max(1, min(127,
                     params['vel_base'] + random.randint(-params['vel_spread'],
-                                                         params['vel_spread'])))
+                                                         params['vel_spread'])
+                    + MELODY_VEL_BOOST))
                 midiout.send_message([0x90 | MELODY_CHANNEL, note, vel])
                 active_note = note
                 if _stop_event.wait(ring):
@@ -954,6 +959,19 @@ def parse_args() -> argparse.Namespace:
              f"At 0.0 mood never changes BPM; at 1.0 the full per-mood multiplier "
              f"applies (e.g. anger \u00d71.18, sadness \u00d70.80, neutral \u00d71.00).",
     )
+    p.add_argument(
+        "--melody-vel-boost", type=int, default=DEFAULT_MELODY_VEL_BOOST, metavar="N",
+        help=f"Fixed velocity added to every melody note, -127\u2013127 "
+             f"(default: {DEFAULT_MELODY_VEL_BOOST}). "
+             f"Use positive values to lift the melody above the accompaniment, "
+             f"negative to pull it back. The result is always clamped to 1\u2013127.",
+    )
+    p.add_argument(
+        "--melody-octave", type=int, default=DEFAULT_MELODY_OCTAVE, metavar="N",
+        choices=[-2, -1, 0, 1, 2],
+        help=f"Transpose melody by N octaves: -1 = down, 0 = none, +1 = up "
+             f"(default: {DEFAULT_MELODY_OCTAVE}). Allowed values: -2, -1, 0, 1, 2.",
+    )
     args = p.parse_args()
     # Validation
     if args.bpm < 20 or args.bpm > 300:
@@ -1001,7 +1019,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     global BPM, LOOPS, PORT, CHANNEL, PROGRAM, VEL_BASS, VEL_CHORD, NOTE_FILL
     global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION, MOOD_TEMPO
-    global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD
+    global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD, MELODY_VEL_BOOST, MELODY_OCTAVE
 
     args = parse_args()
     BPM            = args.bpm
@@ -1020,6 +1038,8 @@ def main() -> None:
     MOOD           = args.mood
     BASS_VARIATION = args.bass_variation
     MOOD_TEMPO     = args.mood_tempo
+    MELODY_VEL_BOOST = args.melody_vel_boost
+    MELODY_OCTAVE    = args.melody_octave
     ref_key  = CHANGES_REF_KEY[CHANGES]
     KEY      = args.key if args.key is not None else ref_key
     TRANSPOSE = (KEY_SEMITONES[KEY] - KEY_SEMITONES[ref_key]) % 12

@@ -543,6 +543,37 @@ Two mixing fixes to make the melody audible and the piano feel more human.
    Applied in: play_slot_stride() and play_slot_boogie() — all note_on
    calls for bass, chord tones, fifth (boogie), and colour tones.
 
+--------------------------------------------------------------------------------
+STEP 15 — --melody-vel-boost and --melody-octave parameters
+--------------------------------------------------------------------------------
+Date: April 29, 2026
+
+Two new CLI parameters to give fine-grained control over the melody's
+overall level and register independently of the per-mood presets.
+
+--melody-vel-boost N   integer, default 0, range −127–127
+  A fixed offset added to every melody note's computed velocity after the
+  per-mood vel_base ± vel_spread calculation:
+    vel = clamp(1, 127, vel_base + randint(-spread, spread) + MELODY_VEL_BOOST)
+  Use positive values to lift the melody above the accompaniment mix;
+  negative values to push it further back.  The final result is always
+  clamped to the valid MIDI range 1–127.
+
+--melody-octave N   integer, choices −2 −1 0 1 2, default 0
+  Transposes every played melody note by N octaves (N × 12 semitones) at
+  playback time.  Applied to the output note only; phrase planning, arc
+  contour, motif storage and approach-note logic all operate in the
+  original register so musical structure is fully preserved.
+    note_out = clamp(1, 127, phrase_note + MELODY_OCTAVE * 12)
+
+Both constants follow the existing DEFAULT_* / global pattern and are
+assigned from args in main().
+
+Examples:
+  python rhythm_changes.py --melody-vel-boost 20
+  python rhythm_changes.py --melody-octave 1
+  python rhythm_changes.py --mood sadness --melody-vel-boost 15 --melody-octave 1
+
 ================================================================================
 END OF LOG
 ================================================================================
