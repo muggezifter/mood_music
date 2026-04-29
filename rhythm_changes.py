@@ -546,16 +546,90 @@ def _melody_candidates(chord_data: tuple, params: dict) -> list:
     return chord_notes * cw + scale_only * sw + tension_notes * tw
 
 
+def _approach_note(chord_data: tuple, prev_note: int) -> int:
+    """
+    Return a chromatic approach pitch 1 semitone below the nearest chord tone
+    to prev_note.  Used as the lead-in note when the chord changes (#4 / #7).
+    """
+    _, tones = chord_data
+    target   = min(tones, key=lambda t: abs(t - prev_note)) if tones else prev_note
+    approach = target - 1
+    # Keep it within an octave of the previous note
+    while approach < prev_note - 12:
+        approach += 12
+    while approach > prev_note + 12:
+        approach -= 12
+    return approach
+
+
+def _build_phrase(chord_data: tuple, params: dict, prev_note: int | None,
+                  phrase_len: int, *, step_beats: float = 1.0,
+                  approach_target: int | None = None) -> list[int]:
+    """
+    Pre-plan a short melodic phrase with arc-shaped contour.
+
+    - Stepwise / proximity + direction weighting for natural lines.
+    - approach_target pins the first note for chord-change resolution (#4 / #7).
+    - step_beats < 0.75 clamps the pool to within an octave of the current
+      note at each step, preventing wide leaps on fast sub-beats (#8).
+    """
+    pool = _melody_candidates(chord_data, params)
+    if not pool:
+        return []
+
+    ascending_first = random.random() < 0.6
+    peak_idx = max(1, random.randint(max(1, phrase_len // 3),
+                                     max(1, 2 * phrase_len // 3)))
+
+    # First note: approach target > proximity bias > free choice
+    if approach_target is not None:
+        current = min(pool, key=lambda p: abs(p - approach_target))
+    elif prev_note is not None:
+        weights = [max(1, 12 - abs(p - prev_note)) for p in pool]
+        current = random.choices(pool, weights=weights, k=1)[0]
+    else:
+        current = random.choice(pool)
+
+    phrase = [current]
+    for i in range(1, phrase_len):
+        going_up = ascending_first if i <= peak_idx else not ascending_first
+
+        # On fast notes clamp the candidate pool to within one octave (#8)
+        active_pool = (
+            [p for p in pool if abs(p - current) <= 12] or pool
+        ) if step_beats < 0.75 else pool
+
+        prox_w = [max(1, 7 - abs(p - current)) for p in active_pool]
+        dir_w  = [3 if (going_up and p > current) or (not going_up and p < current)
+                  else 1
+                  for p in active_pool]
+        combined_w = [pr * d for pr, d in zip(prox_w, dir_w)]
+        current = random.choices(active_pool, weights=combined_w, k=1)[0]
+        phrase.append(current)
+
+    return phrase
+
+
 def melody_thread_func(midiout: rtmidi.MidiOut, beat: float) -> None:
     """Continuously generate an improvisatory melody shaped by MOOD."""
-    active_note = None
+    active_note     = None
+    prev_note       = None          # last played pitch — seeds each new phrase
+    prev_chord_data = None          # chord-change detection (#4 / #7)
+    phrase: list[int] = []
+    phrase_idx      = 0
+    motif: list[int] = []           # last completed phrase — motivic recall (#5)
+    rest_steps      = 0             # forced grouped-rest counter (#6)
+    consec_rests    = 0             # consecutive rest-votes counter (#6)
 
     while not _stop_event.is_set():
         # Pause if face not detected
         if not _play_event.is_set():
             if active_note is not None:
                 midiout.send_message([0x80 | MELODY_CHANNEL, active_note, 0])
+                prev_note   = active_note
                 active_note = None
+            phrase = []; phrase_idx = 0
+            rest_steps = 0; consec_rests = 0
             _play_event.wait(timeout=0.5)
             continue
 
@@ -575,13 +649,63 @@ def melody_thread_func(midiout: rtmidi.MidiOut, beat: float) -> None:
         # Release any note still ringing from the previous step
         if active_note is not None:
             midiout.send_message([0x80 | MELODY_CHANNEL, active_note, 0])
+            prev_note   = active_note
             active_note = None
 
+        # Detect chord change; compute approach note for phrase start (#4 / #7)
+        chord_changed = (chord_data != prev_chord_data)
+        if chord_changed:
+            prev_chord_data = chord_data
+            approach_target = (_approach_note(chord_data, prev_note)
+                               if prev_note is not None else None)
+            phrase = []; phrase_idx = 0   # fresh phrase on every new chord
+        else:
+            approach_target = None
+
+        # Enforce grouped rests (#6): skip this step if in forced-rest window
+        if rest_steps > 0:
+            rest_steps -= 1
+            _stop_event.wait(step)
+            continue
+
         if random.random() < params['density']:
-            pool = _melody_candidates(chord_data, params)
-            if pool:
-                note = random.choice(pool)
-                vel  = max(1, min(127,
+            consec_rests = 0   # reset rest counter on a note vote
+
+            # Build a new phrase when the current one is exhausted
+            if phrase_idx >= len(phrase):
+                phrase_len  = random.randint(4, 8)
+                sb          = params['step_beats']
+
+                # Motivic repetition (#5): 25 % chance to replay last phrase
+                if motif and random.random() < 0.25:
+                    pool = _melody_candidates(chord_data, params)
+                    if pool and prev_note is not None:
+                        closest_start = min(pool, key=lambda p: abs(p - prev_note))
+                        shift      = closest_start - motif[0]
+                        transposed = [m + shift for m in motif]
+                        lo, hi     = min(pool), max(pool)
+                        phrase = (transposed
+                                  if all(lo <= n <= hi for n in transposed)
+                                  else _build_phrase(chord_data, params, prev_note,
+                                                     phrase_len, step_beats=sb,
+                                                     approach_target=approach_target))
+                    else:
+                        phrase = _build_phrase(chord_data, params, prev_note,
+                                               phrase_len, step_beats=sb,
+                                               approach_target=approach_target)
+                else:
+                    phrase = _build_phrase(chord_data, params, prev_note,
+                                           phrase_len, step_beats=sb,
+                                           approach_target=approach_target)
+                phrase_idx = 0
+
+            if phrase and phrase_idx < len(phrase):
+                note = phrase[phrase_idx]
+                phrase_idx += 1
+                # Save phrase as motif when fully played (#5)
+                if phrase_idx >= len(phrase):
+                    motif = list(phrase)
+                vel = max(1, min(127,
                     params['vel_base'] + random.randint(-params['vel_spread'],
                                                          params['vel_spread'])))
                 midiout.send_message([0x90 | MELODY_CHANNEL, note, vel])
@@ -595,6 +719,13 @@ def melody_thread_func(midiout: rtmidi.MidiOut, beat: float) -> None:
             else:
                 _stop_event.wait(step)
         else:
+            # Rest vote: discard phrase; after 2 consecutive votes force a
+            # grouped rest of 1–3 steps (#6)
+            phrase = []; phrase_idx = 0
+            consec_rests += 1
+            if consec_rests >= 2:
+                rest_steps   = random.randint(1, 3)
+                consec_rests = 0
             _stop_event.wait(step)
 
     if active_note is not None:

@@ -351,6 +351,115 @@ Backward compatibility:
   begins immediately as before. Face-gating only activates once
   mood_detector.py connects and sends its initial 'face_off'.
 
+--------------------------------------------------------------------------------
+STEP 11 — Melodic improvements: stepwise motion, arc contour, phrase planning
+--------------------------------------------------------------------------------
+Date: April 29, 2026
+
+Three interrelated improvements to make the melody lines sound more musical
+and less like random note selection.
+
+1. Stepwise / proximate motion weighting
+   Previously each melody note was chosen with uniform probability from the
+   candidate pool, resulting in frequent large leaps (octave+) with no regard
+   for the previous pitch.  Now the pool is sampled with distance-based weights:
+
+     weight = max(1, 12 − |candidate − prev_note|)
+
+   A note 1 semitone away gets weight 11; a note an octave away gets weight 1.
+   Large leaps are still possible but ~11× less likely than a half-step.
+   The first note of a phrase (prev_note is None) still uses uniform choice.
+
+2. Melodic direction / contour state
+   A new _build_phrase() helper pre-plans each phrase with an arc-shaped
+   contour.  At phrase start, a direction is chosen:
+     • ascending-then-descending (60% probability — common in bop lines)
+     • descending-then-ascending (40%)
+   A peak position is placed randomly in the middle third-to-two-thirds of
+   the phrase so arcs vary.  Each step blends two weights:
+     • proximity  : max(1, 7 − |candidate − current|)  — prefer stepwise
+     • direction  : ×3 boost for notes moving the intended way
+   The combined weight naturally steps toward the peak, then steps back down
+   (or vice-versa), producing the arch shapes characteristic of jazz lines.
+
+3. Phrase-level planning (4–8 note phrases)
+   melody_thread_func() now works through a pre-planned phrase list rather
+   than deciding each note independently:
+     • When phrase_idx ≥ len(phrase), a new phrase of 4–8 notes is assembled
+       via _build_phrase() before playback begins.
+     • On a rest step (density check fails) the current phrase is discarded,
+       so the next played note starts a fresh phrase — creating natural breath
+       points between melodic ideas.
+     • On face-off pause the phrase is also cleared, so resumption always
+       begins a new idea rather than continuing a stale arc.
+
+New function: _build_phrase(chord_data, params, prev_note, phrase_len) → list[int]
+  Calls _melody_candidates() once to build the candidate pool, then constructs
+  the phrase note-by-note using the combined proximity+direction weight scheme.
+
+New state in melody_thread_func():
+  phrase      list[int]  — the current pre-planned phrase
+  phrase_idx  int        — index of the next note to play within phrase
+  prev_note   int | None — last played pitch, seeded into the next phrase entry
+
+--------------------------------------------------------------------------------
+STEP 12 — Melodic improvements: approach notes, motif repetition,
+          rhythmic grouping, leap clamping
+--------------------------------------------------------------------------------
+Date: April 29, 2026
+
+Five further improvements building on Step 11 to make the melody sound like
+a real improvised jazz line rather than a random walk over the changes.
+
+4. Approach notes on chord changes
+   A new _approach_note(chord_data, prev_note) helper returns the pitch
+   1 semitone below the nearest chord tone of the incoming chord to prev_note,
+   kept within an octave of prev_note.  Whenever the accompaniment moves to a
+   new chord, the phrase is immediately refreshed and this approach pitch is
+   used to pin the phrase's first note — the classic bebop "lean-into-the-
+   change" effect.
+
+5. Motivic repetition / recall
+   When a phrase is fully played through, it is saved as `motif`.  On the next
+   phrase build there is a 25 % chance to replay it, transposed so its opening
+   note lands as close as possible to prev_note.  If the transposition takes
+   any note outside the current candidate-pool range the fallback is a freshly
+   built phrase, preventing harmonically out-of-range repetition.
+
+6. Rhythmic grouping / phrase breathing
+   Two counters collaborate to turn scattered random rests into clean blocks:
+     consec_rests — increments each time the density check votes for a rest.
+     rest_steps   — when consec_rests reaches 2, set to randint(1, 3) and
+                    consec_rests resets.
+   While rest_steps > 0 each loop iteration simply waits one step and
+   decrements the counter, forcing a silence window of 1–3 continuous steps
+   before the melody resumes.
+
+7. Target-note resolution on chord changes (combined with #4)
+   The approach_target computed at chord change time is passed through to
+   _build_phrase() as a keyword argument.  Inside _build_phrase() the first
+   note is snapped via min(pool, key=lambda p: |p − approach_target|) so the
+   phrase always opens on or near the approach pitch, landing on a chord tone
+   after one step.
+
+8. Leap-width clamp on fast sub-beat steps
+   Inside _build_phrase(), when step_beats < 0.75 (sixteenth / eighth note
+   speed) the candidate pool at each step is filtered to notes within ±12
+   semitones of the current pitch.  An `or pool` fallback ensures the pool
+   never becomes empty in a very narrow register.
+
+New function: _approach_note(chord_data, prev_note) → int
+
+Updated function: _build_phrase(chord_data, params, prev_note, phrase_len, *,
+                                 step_beats=1.0, approach_target=None) → list[int]
+  Added step_beats and approach_target keyword parameters.
+
+New state in melody_thread_func():
+  prev_chord_data  — previous chord slot; compared each step to detect change
+  motif            list[int]  — last fully played phrase, used for recall
+  rest_steps       int        — steps remaining in forced rest window
+  consec_rests     int        — consecutive rest-vote counter
+
 ================================================================================
 END OF LOG
 ================================================================================
