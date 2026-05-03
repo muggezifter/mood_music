@@ -126,6 +126,7 @@ python mood_detector.py [options]
   --ollama-model MODEL    Ollama vision model                (default: gemma3:12b)
   --ollama-url URL        Ollama API base URL                (default: http://localhost:11434)
   --no-display            Headless mode (no OpenCV window)
+  --crop FRAC             Fraction to discard from each side (default: 0.25)
 
 --------------------------------------------------------------------------------
 INTEGRATION WITH rhythm_changes.py
@@ -224,6 +225,48 @@ Two follow-up fixes to the face-gating feature:
    setting face_present=False and triggering the face_off send.
    The pre-warm call on startup still uses enforce_detection=False
    (intentionally: the blank frame has no face by design).
+
+--------------------------------------------------------------------------------
+UPDATE — --crop: side-cropping for analysis  (May 3, 2026)
+--------------------------------------------------------------------------------
+Added a --crop parameter so the analysis backends only see the central portion
+of each webcam frame, discarding a configurable fraction from the left and
+right edges.
+
+New parameter:
+  --crop FRAC      Fraction of frame width to discard from each side.
+                   0   = full frame (crop disabled)
+                   0.25 = discard 25% left + 25% right, analyse middle 50%
+                   Default: 0.25
+
+Motivation:
+  Facial emotion analysis is most reliable when the face dominates the input.
+  Background clutter and movement at the frame edges can introduce noise that
+  the analyser may misread. Cropping the sides narrows the field of view to
+  the region where the face is most likely to appear.
+
+  DeepFace already performs internal face localisation, so the accuracy gain
+  is modest — but reducing irrelevant peripheral content lowers the chance of
+  false face detections and distracting background edges.
+
+  Trade-off: if the subject sits significantly off-centre, the face may be
+  partially or fully outside the cropped region. In that case, reduce --crop
+  or set it to 0 to restore the full frame.
+
+Implementation:
+  In the main capture loop, when args.crop > 0 a column-slice of the frame
+  is computed (_x1 = int(w * crop), _x2 = w - _x1) and _put_frame() is
+  called with frame[:, _x1:_x2] instead of the full frame.
+  The display window continues to show the full frame; two cyan vertical guide
+  lines mark the crop boundaries so the active analysis region is visible at
+  a glance.
+
+  DEFAULT_CROP_SIDES = 0.25 is added alongside the other defaults at the top
+  of the file.  Validation: 0.0 <= crop < 0.5 (crop >= 0.5 would leave no
+  usable image).
+
+  The start-up console output prints the crop setting when it is non-zero:
+    Crop     : 25% from each side  (using middle 50% of the frame)
 
 ================================================================================
 END OF LOG

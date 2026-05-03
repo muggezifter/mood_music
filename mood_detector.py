@@ -55,6 +55,7 @@ DEFAULT_DEBOUNCE     = 2          # consecutive identical readings before send
 DEFAULT_BACKEND      = 'deepface'
 DEFAULT_OLLAMA_MODEL = 'gemma3:12b'
 DEFAULT_OLLAMA_URL   = 'http://localhost:11434'
+DEFAULT_CROP_SIDES   = 0.25       # fraction to discard from each side (0 = disabled)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mood vocabulary and mappings
@@ -349,12 +350,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--no-display',
                    action='store_true',
                    help="Headless mode: do not open a preview window")
+    p.add_argument('--crop',
+                   type=float, default=DEFAULT_CROP_SIDES,
+                   metavar='FRAC',
+                   help="Fraction of frame width to discard from each side "
+                        "before analysis (0 = full frame, 0.25 = middle 50%%)"
+                        "; cropped region is shown with guide lines in the preview")
     args = p.parse_args()
 
     if args.interval <= 0:
         p.error("--interval must be positive")
     if args.debounce < 1:
         p.error("--debounce must be >= 1")
+    if not (0.0 <= args.crop < 0.5):
+        p.error("--crop must be in the range [0, 0.5)")
     return args
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -387,6 +396,9 @@ def main() -> None:
     print(f"Sending  : TCP  {args.pd_host}:{args.pd_port}  [PureData netreceive]")
     print(f"Interval : {args.interval}s   Debounce: {args.debounce}   "
           f"Camera: {args.camera}")
+    if args.crop > 0:
+        print(f"Crop     : {args.crop:.0%} from each side  "
+              f"(using middle {1 - 2*args.crop:.0%} of the frame)")
     if args.backend == 'deepface':
         print("Loading emotion model (first run may be slow)…", flush=True)
     print()
@@ -414,7 +426,14 @@ def main() -> None:
                 time.sleep(0.01)
                 continue
 
-            _put_frame(frame)
+            # Crop sides for analysis while keeping the full frame for display.
+            if args.crop > 0:
+                _h, _w = frame.shape[:2]
+                _x1 = int(_w * args.crop)
+                _x2 = _w - _x1
+                _put_frame(frame[:, _x1:_x2])
+            else:
+                _put_frame(frame)
 
             with _result_lock:
                 raw_mood = _result['mood']
@@ -453,6 +472,13 @@ def main() -> None:
             if not args.no_display:
                 _draw_overlay(frame, confirmed_mood, raw_conf,
                               sender.connected, face_confirmed is True)
+                # Draw vertical guide lines showing the analysis crop region.
+                if args.crop > 0:
+                    _dh, _dw = frame.shape[:2]
+                    _dx1 = int(_dw * args.crop)
+                    _dx2 = _dw - _dx1
+                    cv2.line(frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
+                    cv2.line(frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
                 cv2.imshow('Mood Detector  [q / Esc = quit]', frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):
