@@ -154,7 +154,7 @@ class PDSender:
 # Analysis backends
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _analyze_deepface(frame, min_conf: float) -> tuple[str | None, float]:
+def _analyze_deepface(frame, min_conf: float, detector_backend: str) -> tuple[str | None, float]:
     """Returns (mood, confidence%) using DeepFace, or (None, 0.0).
 
     Uses enforce_detection=True so DeepFace raises ValueError when no face is
@@ -167,7 +167,7 @@ def _analyze_deepface(frame, min_conf: float) -> tuple[str | None, float]:
             img_path=frame,
             actions=['emotion'],
             enforce_detection=True,
-            detector_backend=args.detector_backend,
+            detector_backend=detector_backend,
             silent=True,
         )
         emotions = results[0]['emotion']          # {label: confidence_pct}
@@ -267,7 +267,7 @@ def analysis_worker(args: argparse.Namespace) -> None:
         if args.backend == 'ollama':
             mood, conf = _analyze_ollama(frame, args.ollama_model, args.ollama_url)
         else:
-            mood, conf = _analyze_deepface(frame, args.confidence)
+            mood, conf = _analyze_deepface(frame, args.confidence, args.detector_backend)
 
         if mood:
             with _result_lock:
