@@ -340,8 +340,32 @@ def _draw_overlay(frame, mood: str | None, confidence: float,
     cv2.putText(frame, "PD", (w - 38, h - 34),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, dot, 1, cv2.LINE_AA)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Argument parsing
+
+def _draw_centered_overlay(frame, mood: str | None, confidence: float,
+                           pd_ok: bool, face_ok: bool = True) -> None:
+    """Variant used with --crop-display: mood name centred on the frame."""
+    import cv2
+    import numpy as np
+    h, w = frame.shape[:2]
+    label = 'NO FACE' if not face_ok else (mood.upper() if mood else 'DETECTING\u2026')
+
+    font       = cv2.FONT_HERSHEY_DUPLEX
+    font_scale = 1.4
+    thickness  = 2
+    color      = (255, 255, 255)   # always white
+    (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+    tx = (w - tw) // 2
+    ty = int(h * 0.75) + th // 2   # 75% from the top
+
+    cv2.putText(frame, label, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
+
+    # PD connection indicator dot (top-right corner)
+    dot = (0, 210, 0) if pd_ok else (55, 55, 210)
+    cv2.circle(frame, (w - 14, 20), 6, dot, -1)
+    cv2.putText(frame, "PD", (w - 38, 26),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.38, dot, 1, cv2.LINE_AA)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
@@ -533,15 +557,18 @@ def main() -> None:
                     _dx1 = int(_dw * args.crop)
                     _dx2 = _dw - _dx1
                     display_frame = display_frame[:, _dx1:_dx2]
-                _draw_overlay(display_frame, confirmed_mood, raw_conf,
-                              sender.connected, face_confirmed is True)
-                # Draw guide lines only when showing the full frame.
-                if args.crop > 0 and not args.crop_display:
-                    _dh, _dw = display_frame.shape[:2]
-                    _dx1 = int(_dw * args.crop)
-                    _dx2 = _dw - _dx1
-                    cv2.line(display_frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
-                    cv2.line(display_frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
+                    _draw_centered_overlay(display_frame, confirmed_mood, raw_conf,
+                                           sender.connected, face_confirmed is True)
+                else:
+                    _draw_overlay(display_frame, confirmed_mood, raw_conf,
+                                  sender.connected, face_confirmed is True)
+                    # Draw guide lines only when showing the full frame with a crop.
+                    if args.crop > 0:
+                        _dh, _dw = display_frame.shape[:2]
+                        _dx1 = int(_dw * args.crop)
+                        _dx2 = _dw - _dx1
+                        cv2.line(display_frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
+                        cv2.line(display_frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
                 cv2.imshow('Mood Detector  [q / Esc = quit]', display_frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):

@@ -360,6 +360,38 @@ Implementation:
   cv2.WINDOW_AUTOSIZE on the namedWindow handles the size change automatically.
   Has no visual effect when --crop 0 is used (no crop active).
 
+--------------------------------------------------------------------------------
+UPDATE — Centered overlay for --crop-display mode  (May 4, 2026)
+--------------------------------------------------------------------------------
+When --crop-display is active the preview window shows a narrow strip without
+the usual footer bar context of the full-frame view. The standard _draw_overlay()
+footer was therefore replaced with a new helper _draw_centered_overlay() that
+renders the mood name prominently in the centre of the (already-cropped) frame.
+
+New helper: _draw_centered_overlay(frame, mood, confidence, pd_ok, face_ok)
+  Called instead of _draw_overlay() when:  args.crop > 0 and args.crop_display
+
+Text style:
+  Font        cv2.FONT_HERSHEY_DUPLEX, scale 1.4, thickness 2
+  Color       always white (255, 255, 255) — readable on any background/tint
+  Background  none (transparent — no rectangle drawn behind the text)
+  Position    baseline at ty = int(h * 0.75) + th // 2
+              (centred on the 75%-from-top horizontal line of the frame)
+  Horizontal  centred: tx = (w - tw) // 2
+
+PD indicator:
+  The green/red dot and "PD" label are moved to the top-right corner:
+    dot at (w - 14, 20), "PD" text at (w - 38, 26)
+  This keeps the indicator visible without overlapping the centred mood text.
+
+Rationale:
+  The full-frame footer overlay would look out of place on the narrow crop
+  strip — the colour bar and confidence text take up too much horizontal space.
+  A single large label centred near the bottom-third of the frame looks
+  cleaner and is easy to read at a glance. White text works across full,
+  bw, and duotone color models. The transparent background avoids obscuring
+  the face in the frame.
+
 ================================================================================
 END OF LOG
 ================================================================================
