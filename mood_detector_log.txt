@@ -268,6 +268,98 @@ Implementation:
   The start-up console output prints the crop setting when it is non-zero:
     Crop     : 25% from each side  (using middle 50% of the frame)
 
+--------------------------------------------------------------------------------
+UPDATE — --color-model: preview colour modes  (May 4, 2026)
+--------------------------------------------------------------------------------
+Added a --color-model parameter that transforms the display frame before it
+is shown in the popup window. Analysis is always performed on the untransformed
+frame, so this is a purely cosmetic option.
+
+New parameter:
+  --color-model MODEL   full | bw | duotone   (default: full)
+
+  full      Normal colour, no change (existing behaviour).
+  bw        Greyscale: the frame is converted BGR → grey → BGR so all three
+            channels carry the same luminance value.
+  duotone   Two-tone tint: each pixel is linearly interpolated between a
+            fixed dark-indigo shadow colour and the current mood colour as the
+            highlight. Falls back to amber while no mood is confirmed yet.
+            Creates a coloured mood-reactive tint over the image.
+
+Implementation:
+  New helper _apply_color_model(frame, color_model, mood_color) returns a
+  transformed copy; the original frame is never modified.
+  In the main display block the helper is called before _draw_overlay() and
+  the result (display_frame) is what gets passed to cv2.imshow().
+  The MOOD_COLORS dict (already present) provides the highlight colour for
+  duotone mode.
+
+--------------------------------------------------------------------------------
+UPDATE — Remove Qt toolbar from popup window  (May 4, 2026)
+--------------------------------------------------------------------------------
+The OpenCV Qt backend adds a row of pictogram toolbar buttons to the top of
+every namedWindow. This is suppressed by creating the window explicitly with
+cv2.WINDOW_GUI_NORMAL | cv2.WINDOW_AUTOSIZE before the capture loop starts.
+
+  cv2.namedWindow('Mood Detector  [q / Esc = quit]',
+                  cv2.WINDOW_GUI_NORMAL | cv2.WINDOW_AUTOSIZE)
+
+  WINDOW_GUI_NORMAL   — plain window, no Qt toolbar
+  WINDOW_AUTOSIZE     — window resizes to match frame dimensions (same as
+                        the previous implicit default)
+
+The namedWindow call is skipped entirely in --no-display mode.
+
+--------------------------------------------------------------------------------
+UPDATE — --detector-backend: choose DeepFace face detector  (May 4, 2026)
+--------------------------------------------------------------------------------
+Added a --detector-backend parameter so the DeepFace face-detection algorithm
+can be selected at runtime without editing source code.
+
+New parameter:
+  --detector-backend BACKEND   (default: retinaface)
+
+  Available choices:
+    retinaface   Most accurate, moderate speed (default)
+    opencv       Fastest, basic accuracy – good for weaker hardware
+    ssd          Fast, good accuracy
+    dlib         Moderate speed, good accuracy
+    mtcnn        Moderate speed, good accuracy
+    fastmtcnn    Faster variant of mtcnn
+    yunet        Fast, good accuracy
+    yolov8       Moderate speed, very good accuracy
+
+Implementation:
+  DEFAULT_DETECTOR_BACKEND = 'retinaface' added to the defaults block.
+  detector_backend=args.detector_backend passed to both:
+    1. The live analysis call in _analyze_deepface()
+    2. The pre-warm DeepFace.analyze() call in analysis_worker()
+
+  Has no effect when --backend ollama is used.
+
+--------------------------------------------------------------------------------
+UPDATE — --crop-display: show only the active crop region  (May 4, 2026)
+--------------------------------------------------------------------------------
+Added a --crop-display flag. When set together with a non-zero --crop value,
+the preview window shows only the central strip that is actually sent to the
+analysis backend, and the window automatically resizes to that narrower width.
+
+New parameter:
+  --crop-display    (flag, default: off)
+
+  When off (default): full frame is shown with cyan guide lines at the crop
+    boundaries (existing behaviour).
+  When on: the frame is sliced to [x1:x2] before being passed to
+    _apply_color_model() and _draw_overlay(), so the popup is exactly as wide
+    as the active analysis region. Guide lines are suppressed since the crop
+    boundaries are now the window edges.
+
+Implementation:
+  The slice is applied to display_frame (after _apply_color_model) so neither
+  the original captured frame nor the analysis input is affected.
+  cv2.WINDOW_AUTOSIZE on the namedWindow handles the size change automatically.
+  Has no visual effect when --crop 0 is used (no crop active).
+
 ================================================================================
 END OF LOG
 ================================================================================

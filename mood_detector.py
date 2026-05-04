@@ -28,7 +28,11 @@ Usage examples:
   python mood_detector.py --backend ollama
   python mood_detector.py --pd-port 3001 --interval 0.4 --debounce 3
   python mood_detector.py --backend ollama --ollama-model llava:34b
-  python mood_detector.py --no-display          # headless / ssh session
+  python mood_detector.py --no-display                    # headless / ssh session
+  python mood_detector.py --color-model bw                # greyscale preview
+  python mood_detector.py --color-model duotone           # two-tone preview using mood colour
+  python mood_detector.py --detector-backend opencv       # faster face detector
+  python mood_detector.py --detector-backend retinaface   # most accurate (default)
 """
 
 import argparse
@@ -52,8 +56,9 @@ DEFAULT_CAMERA       = 0
 DEFAULT_INTERVAL     = 0.5        # seconds between analyses
 DEFAULT_CONFIDENCE   = 25.0       # minimum DeepFace confidence % to accept
 DEFAULT_DEBOUNCE     = 2          # consecutive identical readings before send
-DEFAULT_BACKEND      = 'deepface'
-DEFAULT_OLLAMA_MODEL = 'gemma3:12b'
+DEFAULT_BACKEND           = 'deepface'
+DEFAULT_DETECTOR_BACKEND  = 'retinaface'
+DEFAULT_OLLAMA_MODEL      = 'gemma3:12b'
 DEFAULT_OLLAMA_URL   = 'http://localhost:11434'
 DEFAULT_CROP_SIDES   = 0.25       # fraction to discard from each side (0 = disabled)
 
@@ -162,6 +167,7 @@ def _analyze_deepface(frame, min_conf: float) -> tuple[str | None, float]:
             img_path=frame,
             actions=['emotion'],
             enforce_detection=True,
+            detector_backend=args.detector_backend,
             silent=True,
         )
         emotions = results[0]['emotion']          # {label: confidence_pct}
@@ -244,7 +250,9 @@ def analysis_worker(args: argparse.Namespace) -> None:
             # enforce_detection=False here only: blank frame has no face by
             # design; we just want TF/model weights loaded before the live loop.
             DeepFace.analyze(img_path=blank, actions=['emotion'],
-                             enforce_detection=False, silent=True)
+                             enforce_detection=False,
+                             detector_backend=args.detector_backend,
+                             silent=True)
         except Exception:
             pass
 
@@ -276,6 +284,29 @@ def analysis_worker(args: argparse.Namespace) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # On-screen overlay  (only used when --no-display is not set)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _apply_color_model(frame, color_model: str, mood_color: tuple | None = None):
+    """Return a display copy of *frame* transformed by *color_model*.
+
+    full    – no change (default)
+    bw      – greyscale
+    duotone – shadow→highlight tint using the current mood colour
+    """
+    import cv2
+    import numpy as np
+    if color_model == 'bw':
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+    if color_model == 'duotone':
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        alpha = gray.astype(np.float32) / 255.0
+        shadow    = np.array([15, 10, 30], dtype=np.float32)          # dark indigo
+        hi_bgr    = mood_color if mood_color else (220, 200, 50)       # amber fallback
+        highlight = np.array(hi_bgr, dtype=np.float32)
+        out = shadow + (highlight - shadow) * alpha[:, :, np.newaxis]
+        return np.clip(out, 0, 255).astype(np.uint8)
+    return frame.copy()   # 'full'
+
 
 def _draw_overlay(frame, mood: str | None, confidence: float,
                   pd_ok: bool, face_ok: bool = True) -> None:
@@ -341,6 +372,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--backend',
                    choices=['deepface', 'ollama'], default=DEFAULT_BACKEND,
                    help="Analysis backend")
+    p.add_argument('--detector-backend',
+                   dest='detector_backend',
+                   choices=['retinaface', 'opencv', 'ssd', 'dlib',
+                            'mtcnn', 'fastmtcnn', 'yunet', 'yolov8'],
+                   default=DEFAULT_DETECTOR_BACKEND,
+                   help="DeepFace face detector (deepface backend only); "
+                        "retinaface = most accurate, opencv = fastest")
     p.add_argument('--ollama-model',
                    default=DEFAULT_OLLAMA_MODEL,
                    help="Ollama vision model name (ollama backend only)")
@@ -350,12 +388,24 @@ def parse_args() -> argparse.Namespace:
     p.add_argument('--no-display',
                    action='store_true',
                    help="Headless mode: do not open a preview window")
+    p.add_argument('--color-model',
+                   choices=['full', 'bw', 'duotone'], default='full',
+                   dest='color_model',
+                   help="Preview window colour model: "
+                        "full (default, normal colour), "
+                        "bw (greyscale), "
+                        "duotone (two-tone tint using the current mood colour)")
     p.add_argument('--crop',
                    type=float, default=DEFAULT_CROP_SIDES,
                    metavar='FRAC',
                    help="Fraction of frame width to discard from each side "
                         "before analysis (0 = full frame, 0.25 = middle 50%%)"
                         "; cropped region is shown with guide lines in the preview")
+    p.add_argument('--crop-display',
+                   action='store_true',
+                   dest='crop_display',
+                   help="Show only the active (cropped) region in the preview window "
+                        "instead of the full frame; has no effect when --crop is 0")
     args = p.parse_args()
 
     if args.interval <= 0:
@@ -388,6 +438,11 @@ def main() -> None:
         sys.exit(f"Error: cannot open camera index {args.camera}")
     cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+    if not args.no_display:
+        # WINDOW_GUI_NORMAL hides the Qt toolbar row of pictogram buttons.
+        cv2.namedWindow('Mood Detector  [q / Esc = quit]',
+                        cv2.WINDOW_GUI_NORMAL | cv2.WINDOW_AUTOSIZE)
 
     sender = PDSender(args.pd_host, args.pd_port)
 
@@ -470,16 +525,24 @@ def main() -> None:
                     confirmed_mood = candidate_mood
 
             if not args.no_display:
-                _draw_overlay(frame, confirmed_mood, raw_conf,
-                              sender.connected, face_confirmed is True)
-                # Draw vertical guide lines showing the analysis crop region.
-                if args.crop > 0:
-                    _dh, _dw = frame.shape[:2]
+                mood_clr = MOOD_COLORS.get(confirmed_mood) if confirmed_mood else None
+                display_frame = _apply_color_model(frame, args.color_model, mood_clr)
+                # Optionally restrict the display to the active crop region.
+                if args.crop > 0 and args.crop_display:
+                    _dh, _dw = display_frame.shape[:2]
                     _dx1 = int(_dw * args.crop)
                     _dx2 = _dw - _dx1
-                    cv2.line(frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
-                    cv2.line(frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
-                cv2.imshow('Mood Detector  [q / Esc = quit]', frame)
+                    display_frame = display_frame[:, _dx1:_dx2]
+                _draw_overlay(display_frame, confirmed_mood, raw_conf,
+                              sender.connected, face_confirmed is True)
+                # Draw guide lines only when showing the full frame.
+                if args.crop > 0 and not args.crop_display:
+                    _dh, _dw = display_frame.shape[:2]
+                    _dx1 = int(_dw * args.crop)
+                    _dx2 = _dw - _dx1
+                    cv2.line(display_frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
+                    cv2.line(display_frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
+                cv2.imshow('Mood Detector  [q / Esc = quit]', display_frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):
                     break
