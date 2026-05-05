@@ -126,7 +126,11 @@ python mood_detector.py [options]
   --ollama-model MODEL    Ollama vision model                (default: gemma3:12b)
   --ollama-url URL        Ollama API base URL                (default: http://localhost:11434)
   --no-display            Headless mode (no OpenCV window)
+  --color-model MODEL     full | bw | duotone                (default: full)
+  --detector-backend B    retinaface|opencv|ssd|…            (default: retinaface)
   --crop FRAC             Fraction to discard from each side (default: 0.25)
+  --crop-display          Show only the active crop region in the window
+  --scale PCT             Resize preview window to PCT%%      (default: 100)
 
 --------------------------------------------------------------------------------
 INTEGRATION WITH rhythm_changes.py
@@ -391,6 +395,46 @@ Rationale:
   cleaner and is easy to read at a glance. White text works across full,
   bw, and duotone color models. The transparent background avoids obscuring
   the face in the frame.
+
+--------------------------------------------------------------------------------
+UPDATE — --scale: resize the preview window  (May 5, 2026)
+--------------------------------------------------------------------------------
+Added an optional --scale parameter that takes an integer percentage and
+resizes the popup window accordingly, without affecting the analysis pipeline.
+
+New parameter:
+  --scale PCT   integer, default 100
+    Scale the preview window to PCT% of its natural size before display.
+    e.g.  --scale 75   → 75% (shrink window)
+          --scale 150  → 150% (enlarge window)
+
+Motivation:
+  The webcam delivers 640×480 frames. On high-DPI monitors or small screens
+  this may be too large or too small for comfortable monitoring. --scale lets
+  the window be tuned to any size without altering the captured resolution or
+  the frame fed to DeepFace / Ollama.
+
+Implementation:
+  Immediately before cv2.imshow(), when args.scale != 100, display_frame is
+  resized using cv2.resize() with INTER_LINEAR interpolation:
+
+    _nh = max(1, int(h * scale / 100))
+    _nw = max(1, int(w * scale / 100))
+    display_frame = cv2.resize(display_frame, (_nw, _nh), interpolation=INTER_LINEAR)
+
+  max(1, …) guards against degenerate zero-pixel dimensions at very small
+  percentages. The resize is applied after all overlay drawing, so the
+  overlay text and confidence bar scale proportionally with the window.
+  cv2.WINDOW_AUTOSIZE on the namedWindow handles the new dimensions automatically.
+  Has no effect in --no-display mode (no display_frame is produced).
+
+  Validation: --scale must be a positive integer (> 0); a value of 100 skips
+  the resize step entirely so no unnecessary processing occurs at the default.
+
+Examples:
+  python mood_detector.py --scale 75
+  python mood_detector.py --scale 150
+  python mood_detector.py --color-model duotone --crop-display --scale 125
 
 ================================================================================
 END OF LOG

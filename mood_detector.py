@@ -359,6 +359,17 @@ def _draw_centered_overlay(frame, mood: str | None, confidence: float,
 
     cv2.putText(frame, label, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
 
+    # Confidence bar (centred, near the bottom)
+    if face_ok and confidence:
+        bar_total = min(w - 40, 200)
+        bar_fill  = int(bar_total * min(confidence, 100) / 100)
+        bar_x     = (w - bar_total) // 2
+        cv2.rectangle(frame, (bar_x, h - 22), (bar_x + bar_fill, h - 12),
+                      (255, 255, 255), -1)
+        cv2.putText(frame, f"{confidence:.0f}%",
+                    (bar_x + bar_total + 6, h - 11),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
     # PD connection indicator dot (top-right corner)
     dot = (0, 210, 0) if pd_ok else (55, 55, 210)
     cv2.circle(frame, (w - 14, 20), 6, dot, -1)
@@ -430,6 +441,11 @@ def parse_args() -> argparse.Namespace:
                    dest='crop_display',
                    help="Show only the active (cropped) region in the preview window "
                         "instead of the full frame; has no effect when --crop is 0")
+    p.add_argument('--scale',
+                   type=int, default=100,
+                   metavar='PCT',
+                   help="Resize the preview window to PCT%% of its natural size "
+                        "(e.g. 75 = 75%%, 150 = 150%%; default: 100)")
     args = p.parse_args()
 
     if args.interval <= 0:
@@ -438,6 +454,8 @@ def parse_args() -> argparse.Namespace:
         p.error("--debounce must be >= 1")
     if not (0.0 <= args.crop < 0.5):
         p.error("--crop must be in the range [0, 0.5)")
+    if args.scale <= 0:
+        p.error("--scale must be a positive integer")
     return args
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -569,6 +587,12 @@ def main() -> None:
                         _dx2 = _dw - _dx1
                         cv2.line(display_frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
                         cv2.line(display_frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
+                if args.scale != 100:
+                    _sh, _sw = display_frame.shape[:2]
+                    _nw = max(1, int(_sw * args.scale / 100))
+                    _nh = max(1, int(_sh * args.scale / 100))
+                    display_frame = cv2.resize(display_frame, (_nw, _nh),
+                                              interpolation=cv2.INTER_LINEAR)
                 cv2.imshow('Mood Detector  [q / Esc = quit]', display_frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):
