@@ -60,7 +60,8 @@ DEFAULT_BACKEND           = 'deepface'
 DEFAULT_DETECTOR_BACKEND  = 'retinaface'
 DEFAULT_OLLAMA_MODEL      = 'gemma3:12b'
 DEFAULT_OLLAMA_URL   = 'http://localhost:11434'
-DEFAULT_CROP_SIDES   = 0.25       # fraction to discard from each side (0 = disabled)
+DEFAULT_CROP_SIDES      = 0.25       # fraction to discard from each side (0 = disabled)
+DEFAULT_MIN_FACE_HEIGHT = 33         # face must be this % of frame height to count
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Mood vocabulary and mappings
@@ -154,7 +155,8 @@ class PDSender:
 # Analysis backends
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _analyze_deepface(frame, min_conf: float, detector_backend: str) -> tuple[str | None, float]:
+def _analyze_deepface(frame, min_conf: float, detector_backend: str,
+                      min_face_height_pct: float = 0.0) -> tuple[str | None, float]:
     """Returns (mood, confidence%) using DeepFace, or (None, 0.0).
 
     Uses enforce_detection=True so DeepFace raises ValueError when no face is
@@ -170,6 +172,12 @@ def _analyze_deepface(frame, min_conf: float, detector_backend: str) -> tuple[st
             detector_backend=detector_backend,
             silent=True,
         )
+        # Reject the detection if the face is too small relative to the frame.
+        if min_face_height_pct > 0:
+            frame_h = frame.shape[0]
+            face_h  = results[0].get('region', {}).get('h', frame_h)
+            if face_h / frame_h * 100 < min_face_height_pct:
+                return None, 0.0
         emotions = results[0]['emotion']          # {label: confidence_pct}
         dominant = max(emotions, key=emotions.get)
         conf     = float(emotions[dominant])
@@ -267,7 +275,9 @@ def analysis_worker(args: argparse.Namespace) -> None:
         if args.backend == 'ollama':
             mood, conf = _analyze_ollama(frame, args.ollama_model, args.ollama_url)
         else:
-            mood, conf = _analyze_deepface(frame, args.confidence, args.detector_backend)
+            mood, conf = _analyze_deepface(frame, args.confidence,
+                                           args.detector_backend,
+                                           args.min_face_height)
 
         if mood:
             with _result_lock:
@@ -446,6 +456,13 @@ def parse_args() -> argparse.Namespace:
                    metavar='PCT',
                    help="Resize the preview window to PCT%% of its natural size "
                         "(e.g. 75 = 75%%, 150 = 150%%; default: 100)")
+    p.add_argument('--min-face-height',
+                   type=float, default=DEFAULT_MIN_FACE_HEIGHT,
+                   dest='min_face_height',
+                   metavar='PCT',
+                   help="Minimum face height as a percentage of the frame height "
+                        "required to accept a detection (0 = disabled, "
+                        f"default: {DEFAULT_MIN_FACE_HEIGHT}%%; deepface backend only)")
     args = p.parse_args()
 
     if args.interval <= 0:
@@ -456,6 +473,8 @@ def parse_args() -> argparse.Namespace:
         p.error("--crop must be in the range [0, 0.5)")
     if args.scale <= 0:
         p.error("--scale must be a positive integer")
+    if args.min_face_height < 0:
+        p.error("--min-face-height must be >= 0")
     return args
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -478,8 +497,12 @@ def main() -> None:
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
         sys.exit(f"Error: cannot open camera index {args.camera}")
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    # Ask for an impossibly large frame; the driver clamps to its maximum.
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH,  10000)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 10000)
+    cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"Camera   : {cam_w}×{cam_h} (max resolution)")
 
     if not args.no_display:
         # WINDOW_GUI_NORMAL hides the Qt toolbar row of pictogram buttons.
@@ -496,6 +519,8 @@ def main() -> None:
     if args.crop > 0:
         print(f"Crop     : {args.crop:.0%} from each side  "
               f"(using middle {1 - 2*args.crop:.0%} of the frame)")
+    if args.backend == 'deepface' and args.min_face_height > 0:
+        print(f"Min face : {args.min_face_height:.0f}% of frame height")
     if args.backend == 'deepface':
         print("Loading emotion model (first run may be slow)…", flush=True)
     print()

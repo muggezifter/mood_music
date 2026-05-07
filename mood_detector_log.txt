@@ -436,6 +436,55 @@ Examples:
   python mood_detector.py --scale 150
   python mood_detector.py --color-model duotone --crop-display --scale 125
 
+--------------------------------------------------------------------------------
+UPDATE — Auto-detect maximum webcam resolution on startup  (May 7, 2026)
+--------------------------------------------------------------------------------
+The camera capture resolution was previously hardcoded to 640×480. On startup
+the script now requests an impossibly large frame size (10000×10000); the V4L2
+driver silently clamps it to the highest resolution the camera actually supports,
+and the negotiated dimensions are read back and used for all subsequent frames.
+
+Implementation:
+  cap.set(cv2.CAP_PROP_FRAME_WIDTH,  10000)
+  cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 10000)
+  cam_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+  cam_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+The resolved resolution is logged at startup:
+  Camera   : WxH (max resolution)
+
+No CLI parameter is added; the script always uses the maximum available
+resolution. The rest of the pipeline (crop, scale, analysis) is unaffected.
+
+--------------------------------------------------------------------------------
+UPDATE — --min-face-height: reject small / distant faces  (May 7, 2026)
+--------------------------------------------------------------------------------
+Added a --min-face-height parameter that discards any face detection where
+the detected face bounding box is shorter than a given percentage of the
+captured frame height. This prevents readings from distant or partially-visible
+faces that the detector can pick up but are too small for reliable expression
+analysis.
+
+New parameter:
+  --min-face-height PCT   float, default 33
+    Minimum face height as a percentage of the frame height.
+    Set to 0 to disable the check entirely.
+    Only applies to the deepface backend.
+
+Implementation:
+  After DeepFace.analyze() returns, the face height is read from
+  results[0]['region']['h'] and compared against frame.shape[0]:
+
+    face_h / frame_h * 100 < min_face_height_pct  →  return None, 0.0
+
+  A new constant DEFAULT_MIN_FACE_HEIGHT = 33 was added to the defaults block.
+  Validation: --min-face-height must be >= 0.
+  Printed in the startup summary when the value is > 0 and the backend is deepface.
+
+Examples:
+  python mood_detector.py --min-face-height 40   # face must fill ≥40% of height
+  python mood_detector.py --min-face-height 0    # disable the check
+
 ================================================================================
 END OF LOG
 ================================================================================
