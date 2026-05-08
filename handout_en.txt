@@ -1,0 +1,46 @@
+Mood Music
+==========
+
+Mood Music is a generative music installation. A camera mounted above a
+piano keyboard reads the facial expression of anyone who sits down, and
+uses that reading to shape an improvised piano melody in real time. The
+moment the camera detects a face, the music begins. When the visitor
+stands up, it stops.
+
+The system recognises eight emotional states: happiness, sadness, anger,
+fear, surprise, disgust, contempt, and neutrality. Each maps to a
+distinct musical character. Happiness produces bright, dense melodic
+lines in a major scale at a lively tempo. Sadness slows the music,
+drops it into a lower register, and leans on the minor scale and
+expressive blue notes. Anger fills the texture with fast chromatic runs
+and heavy dissonance. Fear generates sparse, unpredictable phrases with
+wide dynamic swings. Surprise throws the melody across a wide register
+with erratic leaps. Disgust produces grinding, reluctant lines heavy
+with tension. Contempt is cold and minimal — a few dry, detached notes.
+Neutrality settles in the middle: moderate tempo, moderate density,
+mostly consonant.
+
+Underneath the melody, the accompaniment follows one of three jazz chord
+progressions — a twelve-bar blues, thirty-two-bar Rhythm Changes (the
+harmonic basis of many bebop standards), or the Coltrane Changes from
+Giant Steps — cycling through each in turn.
+
+How the work was made
+---------------------
+
+Mood Music was built through an iterative conversation with an AI coding
+assistant. No code was written by hand. The work was shaped entirely
+through high-level instructions: describing what the music should feel
+like for each emotion, asking for a chord progression to be added,
+specifying how the camera feed should be handled, and so on. Each
+exchange produced a working version of the program, which was then
+tested, heard, and refined through further instructions. The assistant
+also wrote the accompanying documentation — and this text — in the same
+way: by describing purpose and content in plain language and editing the
+result through conversation.
+
+The process produced not only a working program but a detailed log of
+every design decision, recorded as the work evolved. That log, along
+with the full source code, is available at:
+
+    https://github.com/muggezifter/mood_music
