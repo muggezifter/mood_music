@@ -28,10 +28,10 @@ Giant Steps — cycling through each in turn.
 How the work was made
 ---------------------
 
-This piece grew out of a broader personal project: an informal attempt to
-understand how and why large language models work, combining hands-on use
-of AI tools with learning to program and to train neural networks from
-scratch.
+Developing this piece is part of a broader personal project: an informal
+attempt to understand how and why large language models work, comprising
+gaining experience with using AI tools, learning to program neural
+networks, and learning how to train and fine-tune them.
 
 Mood Music itself was built through an iterative conversation with Claude Sonnet,
 an AI coding assistant. No code was written by hand. The work was shaped

@@ -28,10 +28,11 @@ Giant Steps. Het systeem loopt beurtelings door elk schema heen.
 Hoe het werk is gemaakt
 -----------------------
 
-Dit werk is onderdeel van een breder persoonlijk project: een informele
-poging om te begrijpen hoe en waarom grote taalmodellen werken, waarbij
-het gebruik van AI-tools samengaat met het leren programmeren en het zelf
-trainen van neurale netwerken.
+Het ontwikkelen van dit werk maakt deel uit van een breder persoonlijk
+project: een informele poging om te begrijpen hoe en waarom grote
+taalmodellen werken, bestaande uit het opdoen van ervaring met AI-tools,
+het leren programmeren van neurale netwerken, en het leren trainen en
+finetunen ervan.
 
 Mood Music zelf is gebouwd via een iteratief dialoog met Claude Sonnet, een
 AI-assistent voor programmeren. Er is geen enkele regel code met de hand
