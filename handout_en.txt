@@ -1,5 +1,6 @@
 Mood Music
 ==========
+An interactive installation by Gert Rietveld, 2026
 
 Mood Music is a generative music installation. A camera mounted above a
 piano keyboard reads the facial expression of anyone who sits down, and
@@ -30,8 +31,9 @@ How the work was made
 
 Developing this piece is part of a broader personal project: an informal
 attempt to understand how and why large language models work, involving
-gaining hands-on experience with AI tools, learning to program neural
-networks, and learning how to train and fine-tune them.
+gaining hands-on experience with AI tools, studying the theory and history of
+neural networks, learning to program them, and learning how to train and
+fine-tune them.
 
 Mood Music itself was built through an iterative conversation with
 Claude Sonnet, an AI coding assistant. No code was written by hand. The work was shaped
