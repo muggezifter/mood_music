@@ -1,0 +1,15 @@
+Mood Music
+----------
+
+Sit down at the piano.
+
+The camera above the keyboard watches your face and tries to read your
+emotional expression — happiness, sadness, anger, fear, surprise, or
+something in between. As long as it can see you, the piano plays: a
+continuously improvised melody shaped in real time by whatever mood it
+detects. Move away, and the music stops.
+
+Nothing is recorded. The camera image is processed locally on the
+computer and is never stored or sent anywhere.
+
+There is nothing to press or adjust. Just sit, and listen.
