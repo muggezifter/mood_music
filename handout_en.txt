@@ -32,8 +32,7 @@ How the work was made
 Developing this piece is part of a broader personal project: an informal
 attempt to understand how and why large language models work, involving
 gaining hands-on experience with AI tools, studying the theory and history of
-neural networks, learning to program them, and learning how to train and
-fine-tune them.
+neural networks, and learning to program, train, and fine-tune them.
 
 Mood Music itself was built through an iterative conversation with
 Claude Sonnet, an AI coding assistant. No code was written by hand. The work was shaped

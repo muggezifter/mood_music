@@ -33,7 +33,7 @@ Het ontwikkelen van dit werk maakt deel uit van een breder persoonlijk
 project: een informele poging om te begrijpen hoe en waarom grote
 taalmodellen werken, bestaande uit het opdoen van ervaring met AI-tools,
 het bestuderen van de theorie en geschiedenis van neurale netwerken,
-het leren programmeren ervan, en het leren trainen en finetunen ervan.
+en het leren programmeren, trainen en finetunen ervan.
 
 Mood Music zelf is gebouwd via een iteratieve dialoog met Claude Sonnet, een
 AI-assistent voor programmeren. Er is geen enkele regel code met de hand
