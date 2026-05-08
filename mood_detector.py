@@ -600,11 +600,7 @@ def main() -> None:
                     _dx1 = int(_dw * args.crop)
                     _dx2 = _dw - _dx1
                     display_frame = display_frame[:, _dx1:_dx2]
-                    _draw_centered_overlay(display_frame, confirmed_mood, raw_conf,
-                                           sender.connected, face_confirmed is True)
                 else:
-                    _draw_overlay(display_frame, confirmed_mood, raw_conf,
-                                  sender.connected, face_confirmed is True)
                     # Draw guide lines only when showing the full frame with a crop.
                     if args.crop > 0:
                         _dh, _dw = display_frame.shape[:2]
@@ -612,12 +608,20 @@ def main() -> None:
                         _dx2 = _dw - _dx1
                         cv2.line(display_frame, (_dx1, 0), (_dx1, _dh), (0, 255, 255), 1)
                         cv2.line(display_frame, (_dx2, 0), (_dx2, _dh), (0, 255, 255), 1)
+                # Scale the video frame first so overlay elements are drawn at a
+                # fixed pixel size regardless of the --scale value.
                 if args.scale != 100:
                     _sh, _sw = display_frame.shape[:2]
                     _nw = max(1, int(_sw * args.scale / 100))
                     _nh = max(1, int(_sh * args.scale / 100))
                     display_frame = cv2.resize(display_frame, (_nw, _nh),
                                               interpolation=cv2.INTER_LINEAR)
+                if args.crop > 0 and args.crop_display:
+                    _draw_centered_overlay(display_frame, confirmed_mood, raw_conf,
+                                           sender.connected, face_confirmed is True)
+                else:
+                    _draw_overlay(display_frame, confirmed_mood, raw_conf,
+                                  sender.connected, face_confirmed is True)
                 cv2.imshow('Mood Detector  [q / Esc = quit]', display_frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):

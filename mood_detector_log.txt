@@ -485,6 +485,32 @@ Examples:
   python mood_detector.py --min-face-height 40   # face must fill ≥40% of height
   python mood_detector.py --min-face-height 0    # disable the check
 
+--------------------------------------------------------------------------------
+UPDATE — Fixed overlay scaling with --scale  (May 8, 2026)
+--------------------------------------------------------------------------------
+When --scale was set below 100 (e.g. --scale 60 to shrink the window), the
+on-screen overlay elements (mood label, confidence bar, PD connection indicator)
+were drawn on the full-resolution frame and then downscaled together with the
+video, making them appear much smaller than intended.
+
+Fix:
+  The cv2.resize() step is now performed *before* the overlay is drawn rather
+  than after it. The overlay helpers (_draw_overlay / _draw_centered_overlay)
+  are called on the already-scaled frame, so they always render at their fixed
+  pixel dimensions regardless of the --scale value.
+
+  The cyan crop guide lines (drawn when --crop is active but --crop-display is
+  off) remain drawn before the resize because they are visual markers on the
+  video content itself and should scale with it.
+
+Order of operations in the display block is now:
+  1. Apply color model (_apply_color_model)
+  2. Slice to crop region (when --crop-display)
+  3. Draw crop guide lines on full frame (when --crop and not --crop-display)
+  4. Resize frame to --scale % (cv2.resize — when scale != 100)
+  5. Draw overlay (mood label, confidence bar, PD dot)
+  6. cv2.imshow()
+
 ================================================================================
 END OF LOG
 ================================================================================
