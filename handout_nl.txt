@@ -34,7 +34,7 @@ taalmodellen werken, bestaande uit het opdoen van ervaring met AI-tools,
 het leren programmeren van neurale netwerken, en het leren trainen en
 finetunen ervan.
 
-Mood Music zelf is gebouwd via een iteratief dialoog met Claude Sonnet, een
+Mood Music zelf is gebouwd via een iteratieve dialoog met Claude Sonnet, een
 AI-assistent voor programmeren. Er is geen enkele regel code met de hand
 geschreven. Het werk ontstond volledig uit instructies op hoog niveau:
 hoe de muziek voor elke emotie moest klinken, welke akkoordenschema's
@@ -47,6 +47,6 @@ resultaat bij te sturen via dialoog.
 
 Het proces leverde niet alleen een werkend programma op, maar ook een
 gedetailleerd logboek van elke ontwerpbeslissing. Dat logboek en de
-volledig broncode zijn te vinden op:
+volledige broncode zijn te vinden op:
 
     https://github.com/muggezifter/mood_music

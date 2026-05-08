@@ -29,12 +29,12 @@ How the work was made
 ---------------------
 
 Developing this piece is part of a broader personal project: an informal
-attempt to understand how and why large language models work, comprising
-gaining experience with using AI tools, learning to program neural
+attempt to understand how and why large language models work, involving
+gaining hands-on experience with AI tools, learning to program neural
 networks, and learning how to train and fine-tune them.
 
-Mood Music itself was built through an iterative conversation with Claude Sonnet,
-an AI coding assistant. No code was written by hand. The work was shaped
+Mood Music itself was built through an iterative conversation with
+Claude Sonnet, an AI coding assistant. No code was written by hand. The work was shaped
 entirely through high-level instructions: describing what the music should
 feel like for each emotion, asking for a chord progression to be added,
 specifying how the camera feed should be handled, and so on. Each exchange
