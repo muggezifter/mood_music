@@ -347,7 +347,7 @@ def _draw_overlay(frame, mood: str | None, confidence: float,
     # PD connection indicator dot
     dot = (0, 210, 0) if pd_ok else (55, 55, 210)
     cv2.circle(frame, (w - 14, h - 40), 6, dot, -1)
-    cv2.putText(frame, "PD", (w - 38, h - 34),
+    cv2.putText(frame, "FUDI", (w - 46, h - 34),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, dot, 1, cv2.LINE_AA)
 
 
@@ -383,7 +383,7 @@ def _draw_centered_overlay(frame, mood: str | None, confidence: float,
     # PD connection indicator dot (top-right corner)
     dot = (0, 210, 0) if pd_ok else (55, 55, 210)
     cv2.circle(frame, (w - 14, 20), 6, dot, -1)
-    cv2.putText(frame, "PD", (w - 38, 26),
+    cv2.putText(frame, "FUDI", (w - 46, 26),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, dot, 1, cv2.LINE_AA)
 
 
@@ -513,7 +513,7 @@ def main() -> None:
 
     print(f"Backend  : {args.backend}"
           + (f"  ({args.ollama_model})" if args.backend == 'ollama' else ""))
-    print(f"Sending  : TCP  {args.pd_host}:{args.pd_port}  [PureData netreceive]")
+    print(f"Sending  : TCP  {args.pd_host}:{args.pd_port}  [FUDI]")
     print(f"Interval : {args.interval}s   Debounce: {args.debounce}   "
           f"Camera: {args.camera}")
     if args.crop > 0:
@@ -586,7 +586,7 @@ def main() -> None:
             if candidate_mood and candidate_count >= args.debounce:
                 if candidate_mood != confirmed_mood:
                     ok_send = sender.send(candidate_mood)
-                    tag = "→ PD" if ok_send else "→ PD (not connected)"
+                    tag = "→ FUDI" if ok_send else "→ FUDI (not connected)"
                     print(f"  {candidate_mood:<12}  conf={raw_conf:5.1f}%  {tag}",
                           flush=True)
                     confirmed_mood = candidate_mood

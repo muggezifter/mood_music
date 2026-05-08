@@ -511,6 +511,24 @@ Order of operations in the display block is now:
   5. Draw overlay (mood label, confidence bar, PD dot)
   6. cv2.imshow()
 
+--------------------------------------------------------------------------------
+UPDATE — Renamed PD references to FUDI  (May 8, 2026)
+--------------------------------------------------------------------------------
+The connection indicator label and console output previously referred to "PD"
+(PureData). Since the program communicates using the FUDI protocol rather than
+targeting PureData specifically, these labels have been updated to "FUDI".
+
+Changes:
+  On-screen overlay (both _draw_overlay and _draw_centered_overlay):
+    "PD" label → "FUDI"
+    x-position adjusted slightly left to fit the wider label
+
+  Startup console line:
+    "TCP … [PureData netreceive]" → "TCP … [FUDI]"
+
+  Runtime console line:
+    "→ PD" / "→ PD (not connected)" → "→ FUDI" / "→ FUDI (not connected)"
+
 ================================================================================
 END OF LOG
 ================================================================================
