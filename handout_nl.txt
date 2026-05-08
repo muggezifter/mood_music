@@ -28,7 +28,12 @@ Giant Steps. Het systeem loopt beurtelings door elk schema heen.
 Hoe het werk is gemaakt
 -----------------------
 
-Mood Music is gebouwd via een iteratief dialoog met Claude Sonnet, een
+Dit werk is onderdeel van een breder persoonlijk project: een informele
+poging om te begrijpen hoe en waarom grote taalmodellen werken, waarbij
+het gebruik van AI-tools samengaat met het leren programmeren en het zelf
+trainen van neurale netwerken.
+
+Mood Music zelf is gebouwd via een iteratief dialoog met Claude Sonnet, een
 AI-assistent voor programmeren. Er is geen enkele regel code met de hand
 geschreven. Het werk ontstond volledig uit instructies op hoog niveau:
 hoe de muziek voor elke emotie moest klinken, welke akkoordenschema's
