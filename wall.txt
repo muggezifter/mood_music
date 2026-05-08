@@ -4,10 +4,11 @@ Mood Music
 Ga aan de piano zitten.
 
 De camera boven het toetsenbord kijkt naar je gezicht en probeert je
-gemoedstoestand te lezen — blijdschap, verdriet, woede, angst, verbazing,
+stemming te lezen — blijdschap, verdriet, woede, angst, verbazing,
 of iets daartussenin. Zolang de camera je ziet, speelt de piano: een
 voortdurend geïmproviseerde melodie die in real time wordt gevormd door
-de stemming die hij herkent. Sta je op, dan stopt de muziek.
+de stemming die hij herkent. Je kunt de muziek beïnvloeden door je
+gezichtsuitdrukking te veranderen. Sta je op, dan stopt de muziek.
 
 Er wordt niets opgenomen. Het camerabeeld wordt lokaal verwerkt op de
 computer en wordt nooit opgeslagen of naar het internet gestuurd.
@@ -20,7 +21,8 @@ The camera above the keyboard watches your face and tries to read your
 emotional expression — happiness, sadness, anger, fear, surprise, or
 something in between. As long as it can see you, the piano plays: a
 continuously improvised melody shaped in real time by whatever mood it
-detects. Move away, and the music stops.
+detects. You can influence the music by changing your facial expression.
+Move away, and the music stops.
 
 Nothing is recorded. The camera image is processed locally on the
 computer and is never stored or sent anywhere.
