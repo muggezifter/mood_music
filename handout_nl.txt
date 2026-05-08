@@ -2,47 +2,45 @@ Mood Music
 ==========
 
 Mood Music is een generatieve muziekinstallatie. Een camera boven een
-pianotoetsenbord leest de gezichtsuitdrukking van wie er gaat zitten, en
-gebruikt die meting om in real time een geïmproviseerde pianomelodie te
-vormen. Op het moment dat de camera een gezicht herkent begint de muziek.
-Staat de bezoeker op, dan stopt ze.
+pianotoetsenbord leest de gezichtsuitdrukking van wie er gaat zitten en
+gebruikt die om in real time een geïmproviseerde melodie te vormen. Zodra
+de camera een gezicht herkent, begint de muziek. Staat de bezoeker op,
+dan stopt ze.
 
-Het systeem herkent acht emotionele toestanden: blijdschap, verdriet,
-woede, angst, verbazing, walging, minachting en neutraliteit. Elke
-toestand vertaalt zich naar een eigen muzikaal karakter. Blijdschap levert
-heldere, dichte melodielijnen in een majeur toonladder op een levendig
-tempo. Verdriet vertraagt de muziek, verplaatst haar naar een lager
-register en leunt op de mineur toonladder en expressieve blue notes. Woede
-vult de textuur met snelle chromatische loopjes en zware dissonantie.
-Angst genereert schaarse, onvoorspelbare frasen met grote dynamische
-uitslagen. Verbazing gooit de melodie over een breed register met
-grillige sprongen. Walging produceert moeizame, wringende lijnen vol
-spanning. Minachting is koel en minimaal — een paar droge, afstandelijke
-noten. Neutraliteit nestelt zich in het midden: gematigd tempo, gematigde
-dichtheid, overwegend consonant.
+Het systeem herkent acht emoties: blijdschap, verdriet, woede, angst,
+verbazing, walging, minachting en neutraliteit. Elke emotie heeft een
+eigen muzikaal karakter. Blijdschap klinkt helder en beweeglijk, in een
+majeur toonladder op levendig tempo. Verdriet vertraagt de muziek, zakt
+af naar een lager register en zoekt de mineur toonladder op, met
+expressieve blue notes. Woede brengt snelle chromatische loopjes en
+zware dissonantie. Angst levert schaarse, onvoorspelbare frasen met
+grote dynamische contrasten. Verbazing slingert de melodie over een breed
+register met onverwachte sprongen. Walging klinkt stroef en wringend,
+vol spanning. Minachting is kil en minimaal — een paar droge, afstandelijke
+noten. Neutraliteit houdt het midden: gematigd tempo, rustige dichtheid,
+overwegend consonant.
 
-Onder de melodie volgt de begeleiding een van drie jazzakkoordenschema's
-— een twaalftaktige blues, tweeëndertigtaktige Rhythm Changes (de
+Onder de melodie volgt de begeleiding een van drie jazzakkoordenschema's:
+een twaalftaktige blues, de tweeëndertigtaktige Rhythm Changes (de
 harmonische basis van veel bebopstandards), of de Coltrane Changes uit
-Giant Steps — waarbij het systeem beurtelings door elk schema heen loopt.
+Giant Steps. Het systeem loopt beurtelings door elk schema heen.
 
 Hoe het werk is gemaakt
 -----------------------
 
-Mood Music werd gebouwd via een iteratief gesprek met een AI-assistent
-voor programmeren. Er is geen enkele regel code met de hand geschreven.
-Het werk werd volledig gevormd door instructies op hoog niveau: een
-beschrijving van hoe de muziek voor elke emotie moest klinken, een verzoek
-om een akkoordenschema toe te voegen, een specificatie voor de weergave
-van het cameravenster, enzovoort. Elke uitwisseling leverde een werkende
-versie van het programma op, die vervolgens werd getest, beluisterd en
-bijgesteld via verdere instructies. De assistent schreef ook de
-begeleidende documentatie — en deze tekst — op dezelfde manier: door doel
-en inhoud in gewone taal te beschrijven en het resultaat via gesprek bij
-te sturen.
+Mood Music is gebouwd via een iteratief gesprek met Claude Sonnet, een
+AI-assistent voor programmeren. Er is geen enkele regel code met de hand
+geschreven. Het werk ontstond volledig uit instructies op hoog niveau:
+hoe de muziek voor elke emotie moest klinken, welke akkoordenschema's
+aangeboden moesten worden, hoe het cameravenster eruit moest zien,
+enzovoort. Elke uitwisseling leverde een werkende versie van het programma
+op, die werd getest, beluisterd en via nieuwe instructies verder bijgesteld.
+Claude schreef ook de begeleidende documentatie — en deze tekst — op
+dezelfde manier: door doel en inhoud in gewone taal te beschrijven en het
+resultaat bij te sturen via gesprek.
 
 Het proces leverde niet alleen een werkend programma op, maar ook een
-gedetailleerd logboek van elke ontwerpbeslissing, bijgehouden terwijl het
-werk evolueerde. Dat logboek en de volledige broncode zijn te vinden op:
+gedetailleerd logboek van elke ontwerpbeslissing. Dat logboek en de
+volledig broncode zijn te vinden op:
 
     https://github.com/muggezifter/mood_music
