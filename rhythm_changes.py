@@ -48,6 +48,7 @@ DEFAULT_MOOD_TEMPO      = 0.0    # 0.0 = mood has no tempo effect, 1.0 = full ef
 DEFAULT_MELODY_VEL_BOOST = 0     # additional velocity added to every melody note
 DEFAULT_MELODY_OCTAVE   = 0     # octave shift for melody: -1 down, 0 none, +1 up
 DEFAULT_MELODY_PORT     = None  # if set, melody uses this separate MIDI port index
+DEFAULT_ROTATE_EVERY    = 4      # choruses of each changes type before rotating
 
 # Module-level names kept for use by helper functions; set in main() from args.
 BPM       = DEFAULT_BPM
@@ -71,6 +72,7 @@ MOOD_TEMPO     = DEFAULT_MOOD_TEMPO
 MELODY_VEL_BOOST = DEFAULT_MELODY_VEL_BOOST
 MELODY_OCTAVE    = DEFAULT_MELODY_OCTAVE
 MELODY_PORT      = DEFAULT_MELODY_PORT
+ROTATE_EVERY     = DEFAULT_ROTATE_EVERY
 
 # Set in main(); either the same MidiOut as the accompaniment or a second port.
 _mel_out: 'rtmidi.MidiOut | None' = None
@@ -938,7 +940,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--changes", type=str, default=DEFAULT_CHANGES, metavar="CHANGES",
         help="Chord changes: 'rhythm' (or 'r') / 'blues' (or 'bl') / 'coltrane' (or 'c') "
+             "/ 'rotate' (or 'ro') — cycles blues→rhythm→coltrane "
              f"(default: {DEFAULT_CHANGES})",
+    )
+    p.add_argument(
+        "--rotate-every", type=int, default=DEFAULT_ROTATE_EVERY, metavar="N",
+        dest='rotate_every',
+        help=f"When --changes rotate: choruses of each changes type before "
+             f"rotating to the next (default: {DEFAULT_ROTATE_EVERY})",
     )
     p.add_argument(
         "--melody-channel", type=int, default=DEFAULT_MELODY_CHANNEL, metavar="N",
@@ -1022,10 +1031,14 @@ def parse_args() -> argparse.Namespace:
         'r': 'rhythm', 'rhythm': 'rhythm',
         'bl': 'blues', 'blues': 'blues',
         'c': 'coltrane', 'coltrane': 'coltrane',
+        'ro': 'rotate', 'rotate': 'rotate',
     }
     if args.changes.lower() not in changes_map:
-        p.error("--changes must be 'rhythm' (or 'r'), 'blues' (or 'bl'), or 'coltrane' (or 'c')")
+        p.error("--changes must be 'rhythm' (or 'r'), 'blues' (or 'bl'), "
+                "'coltrane' (or 'c'), or 'rotate' (or 'ro')")
     args.changes = changes_map[args.changes.lower()]
+    if args.rotate_every < 1:
+        p.error("--rotate-every must be >= 1")
     valid_moods = set(MOOD_PARAMS.keys())
     if args.mood.lower() not in valid_moods:
         p.error(f"--mood '{args.mood}' not recognised. "
@@ -1038,11 +1051,14 @@ def parse_args() -> argparse.Namespace:
 # Entry point
 # ──────────────────────────────────────────────────────────────────────────────
 
+_ROTATE_SEQUENCE = ['blues', 'rhythm', 'coltrane']
+
+
 def main() -> None:
     global BPM, LOOPS, PORT, CHANNEL, PROGRAM, VEL_BASS, VEL_CHORD, NOTE_FILL
     global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION, MOOD_TEMPO
     global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD, MELODY_VEL_BOOST, MELODY_OCTAVE
-    global MELODY_PORT, _mel_out
+    global MELODY_PORT, _mel_out, ROTATE_EVERY
 
     args = parse_args()
     BPM            = args.bpm
@@ -1064,8 +1080,18 @@ def main() -> None:
     MELODY_VEL_BOOST = args.melody_vel_boost
     MELODY_OCTAVE    = args.melody_octave
     MELODY_PORT      = args.melody_port
-    ref_key  = CHANGES_REF_KEY[CHANGES]
-    KEY      = args.key if args.key is not None else ref_key
+    ROTATE_EVERY     = args.rotate_every
+
+    _rotate_mode = (CHANGES == 'rotate')
+    if _rotate_mode:
+        # Start with the first changes in the rotation; common tonality is Bb.
+        CHANGES  = _ROTATE_SEQUENCE[0]
+        KEY      = args.key if args.key is not None else 'Bb'
+    else:
+        KEY      = args.key if args.key is not None else CHANGES_REF_KEY[CHANGES]
+    _rotate_target_key = KEY   # fixed user key used when recomputing transpose per segment
+
+    ref_key   = CHANGES_REF_KEY[CHANGES]
     TRANSPOSE = (KEY_SEMITONES[KEY] - KEY_SEMITONES[ref_key]) % 12
     if TRANSPOSE > 6:
         TRANSPOSE -= 12
@@ -1080,8 +1106,9 @@ def main() -> None:
     _mel_out.send_message([0xC0 | MELODY_CHANNEL, MELODY_PROGRAM])
 
     changes_label = {
-        'rhythm': 'Rhythm Changes', 'blues': 'Blues', 'coltrane': 'Coltrane Changes'
-    }[CHANGES]
+        'rhythm': 'Rhythm Changes', 'blues': 'Blues', 'coltrane': 'Coltrane Changes',
+        'rotate': f'Rotate (Blues \u2192 Rhythm \u2192 Coltrane, {ROTATE_EVERY} choruses each)',
+    }[args.changes]
     loop_desc = f"{LOOPS} chorus{'es' if LOOPS != 1 else ''}" if LOOPS else "\u221e (Ctrl+C to stop)"
     eff_bpm = round(BPM * (1.0 + (_MOOD_BPM_FACTORS.get(MOOD, 1.0) - 1.0) * MOOD_TEMPO))
     bpm_str = f"{BPM} BPM" if eff_bpm == BPM else f"{BPM} BPM \u2192 {eff_bpm} BPM ({MOOD})"
@@ -1104,6 +1131,21 @@ def main() -> None:
     try:
         while True:
             chorus += 1
+
+            if _rotate_mode:
+                segment_idx = ((chorus - 1) // ROTATE_EVERY) % len(_ROTATE_SEQUENCE)
+                new_changes = _ROTATE_SEQUENCE[segment_idx]
+                if new_changes != CHANGES:
+                    CHANGES   = new_changes
+                    _ref      = CHANGES_REF_KEY[CHANGES]
+                    TRANSPOSE = (KEY_SEMITONES[_rotate_target_key] - KEY_SEMITONES[_ref]) % 12
+                    if TRANSPOSE > 6:
+                        TRANSPOSE -= 12
+                    label = {'blues': 'Blues', 'rhythm': 'Rhythm Changes',
+                             'coltrane': 'Coltrane Changes'}[CHANGES]
+                    print(f"[rotate] \u2192 {label}  "
+                          f"(key: {_rotate_target_key}, transpose: {TRANSPOSE:+d} st)\n")
+
             is_final = LOOPS > 0 and chorus == LOOPS
             play_chorus(midiout, beat, chorus, final=is_final)
             if is_final:

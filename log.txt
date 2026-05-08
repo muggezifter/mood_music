@@ -609,6 +609,68 @@ New module-level reference: _mel_out (rtmidi.MidiOut | None)
 Example:
   python rhythm_changes.py --melody-port 1
 
+--------------------------------------------------------------------------------
+STEP 17 — --changes rotate + --rotate-every: cycling through all three changes
+--------------------------------------------------------------------------------
+Date: May 8, 2026
+
+Added a fourth value for --changes that automatically cycles through Blues,
+Rhythm Changes, and Coltrane Changes in sequence, keeping the tonality
+consistent across all three.
+
+New CLI parameter:
+  --changes rotate (alias: ro)
+    Plays Blues → Rhythm Changes → Coltrane Changes repeatedly, rotating
+    after a configurable number of choruses.  Each changes type is played in
+    full-length choruses (12, 32, and 16 bars respectively).
+
+New CLI parameter:
+  --rotate-every N   integer ≥ 1, default 4
+    Number of choruses of each changes type to play before rotating to the
+    next.  Applies equally to all three.  Examples:
+      --rotate-every 4  → 4 Blues, 4 Rhythm, 4 Coltrane, 4 Blues, …
+      --rotate-every 1  → one chorus of each in turn
+
+Tonality / transposition in rotate mode:
+  Blues (ref key Bb) and Rhythm Changes (ref key Bb) share the same natural
+  key.  Coltrane Changes have a natural key of B, one semitone higher.
+  In rotate mode a single target key is fixed at startup (default Bb, or
+  whatever --key is passed).  When the rotation switches to Coltrane Changes,
+  TRANSPOSE is recomputed relative to B so the progression sounds in the same
+  key as the other two changes types — effectively transposing Coltrane −1
+  semitone into Bb.  The console prints the change:
+    [rotate] → Coltrane Changes  (key: Bb, transpose: -1 st)
+
+Implementation:
+  _ROTATE_SEQUENCE = ['blues', 'rhythm', 'coltrane']   (module-level constant)
+    Defines the fixed rotation order.
+
+  In main(), when args.changes == 'rotate':
+    • _rotate_mode flag is set True.
+    • CHANGES is initialised to the first item in _ROTATE_SEQUENCE.
+    • _rotate_target_key is stored (the fixed tonality throughout the session).
+    • TRANSPOSE is computed for the first changes type as normal.
+
+  In the main playback loop, before each chorus:
+    segment_idx = ((chorus - 1) // ROTATE_EVERY) % len(_ROTATE_SEQUENCE)
+    When the computed segment_idx maps to a different changes type than the
+    current CHANGES, CHANGES and TRANSPOSE are updated atomically, and the
+    transition is logged to the console.
+
+  The `is_final` logic (--loops) continues to work as before: the final
+  chorus tag is applied to whichever changes type happens to be active.
+
+New constant: DEFAULT_ROTATE_EVERY = 4
+New global:   ROTATE_EVERY (set from args.rotate_every in main())
+
+Startup header when --changes rotate:
+  "Rotate (Blues → Rhythm → Coltrane, N choruses each) — Bb — …"
+
+Examples:
+  python rhythm_changes.py --changes rotate
+  python rhythm_changes.py --changes ro --rotate-every 2
+  python rhythm_changes.py --changes ro --key F --rotate-every 3
+
 ================================================================================
 END OF LOG
 ================================================================================
