@@ -529,6 +529,22 @@ Changes:
   Runtime console line:
     "→ PD" / "→ PD (not connected)" → "→ FUDI" / "→ FUDI (not connected)"
 
+--------------------------------------------------------------------------------
+UPDATE — Mirrored preview window  (May 9, 2026)
+--------------------------------------------------------------------------------
+The preview window now shows the webcam image horizontally flipped (mirrored),
+so the display matches natural mirror behaviour — the viewer's left and right
+appear as expected rather than reversed.
+
+Implementation:
+  A single cv2.flip(display_frame, 1) call is inserted immediately after
+  _apply_color_model() and before any cropping, scaling, or overlay drawing.
+  Argument 1 = horizontal flip around the vertical axis.
+
+  The flip is applied only to the display copy (display_frame); the frame
+  sent to the analysis backend (_put_frame) is not flipped, so emotion
+  detection is unaffected.
+
 ================================================================================
 END OF LOG
 ================================================================================

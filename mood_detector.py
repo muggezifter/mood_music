@@ -594,6 +594,7 @@ def main() -> None:
             if not args.no_display:
                 mood_clr = MOOD_COLORS.get(confirmed_mood) if confirmed_mood else None
                 display_frame = _apply_color_model(frame, args.color_model, mood_clr)
+                display_frame = cv2.flip(display_frame, 1)
                 # Optionally restrict the display to the active crop region.
                 if args.crop > 0 and args.crop_display:
                     _dh, _dw = display_frame.shape[:2]
