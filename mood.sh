@@ -1,1 +1,1 @@
-python3 mood_detector.py --interval 1.5 --confidence 35  --color-model duotone --crop 0.25 --crop-display --scale 50
+python3 mood_detector.py --interval 1.5 --confidence 35  --color-model duotone --crop 0.25 --crop-display --scale 50 --min-face-height 25

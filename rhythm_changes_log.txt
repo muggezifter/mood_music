@@ -671,6 +671,56 @@ Examples:
   python rhythm_changes.py --changes ro --rotate-every 2
   python rhythm_changes.py --changes ro --key F --rotate-every 3
 
+--------------------------------------------------------------------------------
+STEP 18 — Piano keepalive during no-face pause
+--------------------------------------------------------------------------------
+Date: May 10, 2026
+File: rhythm_changes.py
+
+When mood_detector signals 'face_off' the accompaniment and melody threads
+both pause and produce no MIDI output.  Some digital pianos enter an
+automatic sleep/power-saving mode after a period of silence, which causes
+the instrument to stop responding until it is woken.
+
+Fix: a new dedicated daemon thread, _keepalive_thread_func(), fires once
+every 60 seconds while _play_event is cleared (no-face / paused mode) and
+sends a MIDI note-on for middle C (pitch 60) at velocity 0 on the
+accompaniment channel.  Velocity 0 is defined by the MIDI standard as
+equivalent to a note-off and produces no audible sound; it is sufficient
+to reset the piano's inactivity timer.
+
+Implementation details:
+  _keepalive_thread_func(midiout, interval=60.0)
+    • Blocks on _play_event.wait() while music is playing (efficient, no
+      busy loop).
+    • Once paused, enters a secondary inner loop that fires the keepalive
+      message and then waits in 1-second increments so it reacts quickly
+      to both stop (_stop_event) and resume (_play_event) signals.
+    • On resume it exits the inner loop and returns to blocking on
+      _play_event.wait() until the next pause.
+    • Thread is daemon=True so it does not prevent clean shutdown.
+
+  In main(): a keepalive_thread is created and started alongside net_thread
+  and mel_thread, using the same midiout instance (accompaniment port).
+
+  Console output: prints "[keepalive] Sent silent note to prevent piano
+  sleep" each time a keepalive is fired, for monitoring.
+
+--------------------------------------------------------------------------------
+MINOR FIXES — May 10, 2026
+--------------------------------------------------------------------------------
+
+mood_detector.py
+  • Connection indicator "FUDI" label: x-position changed from w−46 to
+    w−50 (4 pixels to the left) in both _draw_overlay() and
+    _draw_centered_overlay().  This gives the label a little more clearance
+    from the green/red dot on the right.
+
+mood.sh
+  • Added --min-face-height 25 to the standard launch command so that
+    only faces occupying at least 25 % of the frame height are counted.
+    (Previously the script relied on the compiled-in default of 33 %.)
+
 ================================================================================
 END OF LOG
 ================================================================================

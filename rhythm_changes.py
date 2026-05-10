@@ -884,6 +884,37 @@ def network_listener_func(port: int) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Piano keepalive thread (fires while in no-face / paused mode)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _keepalive_thread_func(midiout: 'rtmidi.MidiOut', interval: float = 60.0) -> None:
+    """Send a note-on with velocity 0 every *interval* seconds while paused.
+
+    This prevents the digital piano from entering sleep/power-saving mode
+    during long no-face pauses.  Middle C (MIDI 60) is used as the keepalive
+    pitch; velocity 0 is equivalent to a note-off and produces no audible sound.
+    """
+    KEEPALIVE_NOTE = 60  # middle C
+    while not _stop_event.is_set():
+        # Wait for the play_event to be *cleared* (no-face mode)
+        _play_event.wait()                          # block while playing normally
+        # Now playing; wait until paused
+        while _play_event.is_set() and not _stop_event.is_set():
+            _stop_event.wait(timeout=1.0)
+        if _stop_event.is_set():
+            break
+        # We are now in no-face / paused mode — fire keepalives until resumed
+        while not _play_event.is_set() and not _stop_event.is_set():
+            midiout.send_message([0x90 | CHANNEL, KEEPALIVE_NOTE, 0])
+            print("[keepalive] Sent silent note to prevent piano sleep", flush=True)
+            # Sleep in small increments so we can react quickly to stop/resume
+            elapsed = 0.0
+            while elapsed < interval and not _play_event.is_set() and not _stop_event.is_set():
+                _stop_event.wait(timeout=1.0)
+                elapsed += 1.0
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Argument parsing
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -1126,6 +1157,12 @@ def main() -> None:
         daemon=True, name='melody',
     )
     mel_thread.start()
+
+    keepalive_thread = threading.Thread(
+        target=_keepalive_thread_func, args=(midiout,),
+        daemon=True, name='keepalive',
+    )
+    keepalive_thread.start()
 
     chorus = 0
     try:

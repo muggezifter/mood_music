@@ -347,7 +347,7 @@ def _draw_overlay(frame, mood: str | None, confidence: float,
     # PD connection indicator dot
     dot = (0, 210, 0) if pd_ok else (55, 55, 210)
     cv2.circle(frame, (w - 14, h - 40), 6, dot, -1)
-    cv2.putText(frame, "FUDI", (w - 46, h - 34),
+    cv2.putText(frame, "FUDI", (w - 50, h - 34),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, dot, 1, cv2.LINE_AA)
 
 
@@ -383,7 +383,7 @@ def _draw_centered_overlay(frame, mood: str | None, confidence: float,
     # PD connection indicator dot (top-right corner)
     dot = (0, 210, 0) if pd_ok else (55, 55, 210)
     cv2.circle(frame, (w - 14, 20), 6, dot, -1)
-    cv2.putText(frame, "FUDI", (w - 46, 26),
+    cv2.putText(frame, "FUDI", (w - 50, 26),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.38, dot, 1, cv2.LINE_AA)
 
 
