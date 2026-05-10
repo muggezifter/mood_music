@@ -324,17 +324,23 @@ def _draw_overlay(frame, mood: str | None, confidence: float,
     h, w = frame.shape[:2]
     if not face_ok:
         color = (80, 80, 80)
-        label = 'NO FACE'
+        label = None           # drawn as two lines below
     else:
         color = MOOD_COLORS.get(mood, (200, 200, 200)) if mood else (160, 160, 160)
-        label = mood.upper() if mood else 'DETECTING\u2026'
+        label = mood.upper() if mood else 'DETECTING…'
 
     # Dark footer bar
     cv2.rectangle(frame, (0, h - 56), (w, h), (22, 22, 22), -1)
 
     # Mood label
-    cv2.putText(frame, label, (14, h - 16),
-                cv2.FONT_HERSHEY_DUPLEX, 1.05, color, 2, cv2.LINE_AA)
+    if label is None:
+        cv2.putText(frame, 'SIT DOWN AT', (14, h - 38),
+                    cv2.FONT_HERSHEY_DUPLEX, 0.75, color, 2, cv2.LINE_AA)
+        cv2.putText(frame, 'THE PIANO', (14, h - 10),
+                    cv2.FONT_HERSHEY_DUPLEX, 0.75, color, 2, cv2.LINE_AA)
+    else:
+        cv2.putText(frame, label, (14, h - 16),
+                    cv2.FONT_HERSHEY_DUPLEX, 1.05, color, 2, cv2.LINE_AA)
 
     # Confidence bar
     if mood and confidence:
@@ -357,17 +363,23 @@ def _draw_centered_overlay(frame, mood: str | None, confidence: float,
     import cv2
     import numpy as np
     h, w = frame.shape[:2]
-    label = 'NO FACE' if not face_ok else (mood.upper() if mood else 'DETECTING\u2026')
-
     font       = cv2.FONT_HERSHEY_DUPLEX
     font_scale = 1.4
     thickness  = 2
     color      = (255, 255, 255)   # always white
-    (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
-    tx = (w - tw) // 2
-    ty = int(h * 0.75) + th // 2   # 75% from the top
 
-    cv2.putText(frame, label, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
+    if not face_ok:
+        for i, line in enumerate(['SIT DOWN AT', 'THE PIANO']):
+            (tw, th), _ = cv2.getTextSize(line, font, font_scale, thickness)
+            tx = (w - tw) // 2
+            ty = int(h * 0.72) + th // 2 + i * (th + 18)
+            cv2.putText(frame, line, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
+    else:
+        label = mood.upper() if mood else 'DETECTING…'
+        (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
+        tx = (w - tw) // 2
+        ty = int(h * 0.75) + th // 2   # 75% from the top
+        cv2.putText(frame, label, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
 
     # Confidence bar (centred, near the bottom)
     if face_ok and confidence:

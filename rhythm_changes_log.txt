@@ -715,6 +715,11 @@ mood_detector.py
     w−50 (4 pixels to the left) in both _draw_overlay() and
     _draw_centered_overlay().  This gives the label a little more clearance
     from the green/red dot on the right.
+  • "NO FACE" message replaced by a two-line invitation: "SIT DOWN AT /
+    THE PIANO", displayed in both the footer-bar overlay and the centred
+    (crop-display) overlay.  Vertical gap between the two lines increased
+    slightly for readability (footer: y offset 34 → 38 px above bottom;
+    centred: inter-line gap th+10 → th+18 px).
 
 mood.sh
   • Added --min-face-height 25 to the standard launch command so that
