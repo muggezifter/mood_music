@@ -1,0 +1,1 @@
+python3 rhythm_changes.py --port 1 --vel-bass 55 --vel-chord 45 --changes ro --rotate-every 12 --bass-variation 0.2 --mood-tempo 1
