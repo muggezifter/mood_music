@@ -319,12 +319,13 @@ def _apply_color_model(frame, color_model: str, mood_color: tuple | None = None)
 
 
 def _draw_overlay(frame, mood: str | None, confidence: float,
-                  pd_ok: bool, face_ok: bool = True) -> None:
+                  pd_ok: bool, face_ok: bool = True,
+                  show_invitation: bool = False) -> None:
     import cv2
     h, w = frame.shape[:2]
     if not face_ok:
         color = (80, 80, 80)
-        label = None           # drawn as two lines below
+        label = None           # drawn as lines below
     else:
         color = MOOD_COLORS.get(mood, (200, 200, 200)) if mood else (160, 160, 160)
         label = mood.upper() if mood else 'DETECTING…'
@@ -334,10 +335,20 @@ def _draw_overlay(frame, mood: str | None, confidence: float,
 
     # Mood label
     if label is None:
-        cv2.putText(frame, 'SIT DOWN AT', (14, h - 38),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.75, color, 2, cv2.LINE_AA)
-        cv2.putText(frame, 'THE PIANO', (14, h - 10),
-                    cv2.FONT_HERSHEY_DUPLEX, 0.75, color, 2, cv2.LINE_AA)
+        if show_invitation:
+            inv_font  = cv2.FONT_HERSHEY_DUPLEX
+            inv_scale = 0.75
+            inv_thick = 2
+            (_, th_inv), _ = cv2.getTextSize('SIT DOWN AT', inv_font, inv_scale, inv_thick)
+            line_step = 33  # baseline-to-baseline spacing
+            # Centre the block vertically: block spans from (first_y - th_inv) to (last_y)
+            first_y = h // 2 - line_step + th_inv // 2
+            for i, line in enumerate(['PLEASE', 'SIT DOWN AT', 'THE PIANO']):
+                cv2.putText(frame, line, (14, first_y + i * line_step),
+                            inv_font, inv_scale, color, inv_thick, cv2.LINE_AA)
+        else:
+            cv2.putText(frame, 'NO FACE', (14, h - 16),
+                        cv2.FONT_HERSHEY_DUPLEX, 1.05, color, 2, cv2.LINE_AA)
     else:
         cv2.putText(frame, label, (14, h - 16),
                     cv2.FONT_HERSHEY_DUPLEX, 1.05, color, 2, cv2.LINE_AA)
@@ -358,7 +369,8 @@ def _draw_overlay(frame, mood: str | None, confidence: float,
 
 
 def _draw_centered_overlay(frame, mood: str | None, confidence: float,
-                           pd_ok: bool, face_ok: bool = True) -> None:
+                           pd_ok: bool, face_ok: bool = True,
+                           show_invitation: bool = False) -> None:
     """Variant used with --crop-display: mood name centred on the frame."""
     import cv2
     import numpy as np
@@ -369,11 +381,21 @@ def _draw_centered_overlay(frame, mood: str | None, confidence: float,
     color      = (255, 255, 255)   # always white
 
     if not face_ok:
-        for i, line in enumerate(['SIT DOWN AT', 'THE PIANO']):
-            (tw, th), _ = cv2.getTextSize(line, font, font_scale, thickness)
+        if show_invitation:
+            (_, th), _ = cv2.getTextSize('SIT DOWN AT', font, font_scale, thickness)
+            line_step = th + 23  # baseline-to-baseline spacing
+            # Centre the block vertically: block spans from (first_y - th) to (last_y)
+            first_y = h // 2 - line_step + th // 2
+            for i, line in enumerate(['PLEASE', 'SIT DOWN AT', 'THE PIANO']):
+                (tw, _), _ = cv2.getTextSize(line, font, font_scale, thickness)
+                tx = (w - tw) // 2
+                cv2.putText(frame, line, (tx, first_y + i * line_step),
+                            font, font_scale, color, thickness, cv2.LINE_AA)
+        else:
+            (tw, th), _ = cv2.getTextSize('NO FACE', font, font_scale, thickness)
             tx = (w - tw) // 2
-            ty = int(h * 0.72) + th // 2 + i * (th + 18)
-            cv2.putText(frame, line, (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
+            ty = int(h * 0.75) + th // 2
+            cv2.putText(frame, 'NO FACE', (tx, ty), font, font_scale, color, thickness, cv2.LINE_AA)
     else:
         label = mood.upper() if mood else 'DETECTING…'
         (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
@@ -549,6 +571,7 @@ def main() -> None:
     face_confirmed   = None   # None = not yet known, True = face, False = no face
     face_candidate   = None
     face_cand_count  = 0
+    no_face_since    = None   # timestamp when face was last lost
 
     # Tell rhythm_changes.py to pause until we confirm a face
     sender.send('face_off')
@@ -587,6 +610,10 @@ def main() -> None:
                 state = 'detected' if face_candidate else 'lost'
                 print(f"  [face {state}]", flush=True)
                 face_confirmed = face_candidate
+                if face_candidate:
+                    no_face_since = None
+                else:
+                    no_face_since = time.time()
 
             # Mood debounce: only act after N consecutive identical readings.
             if raw_mood == candidate_mood:
@@ -629,12 +656,15 @@ def main() -> None:
                     _nh = max(1, int(_sh * args.scale / 100))
                     display_frame = cv2.resize(display_frame, (_nw, _nh),
                                               interpolation=cv2.INTER_LINEAR)
+                _face_ok        = face_confirmed is True
+                _show_inv       = (not _face_ok and no_face_since is not None
+                                   and time.time() - no_face_since >= 2.0)
                 if args.crop > 0 and args.crop_display:
                     _draw_centered_overlay(display_frame, confirmed_mood, raw_conf,
-                                           sender.connected, face_confirmed is True)
+                                           sender.connected, _face_ok, _show_inv)
                 else:
                     _draw_overlay(display_frame, confirmed_mood, raw_conf,
-                                  sender.connected, face_confirmed is True)
+                                  sender.connected, _face_ok, _show_inv)
                 cv2.imshow('Mood Detector  [q / Esc = quit]', display_frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord('q'), 27):

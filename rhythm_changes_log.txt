@@ -726,6 +726,37 @@ mood.sh
     only faces occupying at least 25 % of the frame height are counted.
     (Previously the script relied on the compiled-in default of 33 %.)
 
+--------------------------------------------------------------------------------
+MINOR FIXES — May 11, 2026
+--------------------------------------------------------------------------------
+
+mood_detector.py
+  • No-face overlay: "NO FACE" is now shown first; after 2 seconds without
+    a face the display transitions to a multi-line invitation message.
+    This is controlled by a new show_invitation flag passed to both
+    _draw_overlay() and _draw_centered_overlay().  The timestamp
+    no_face_since is set when face_confirmed goes False and cleared when
+    a face returns; show_invitation = (elapsed >= 2.0).
+
+  • Invitation message updated: "PLEASE" added as a third line above
+    "SIT DOWN AT" and "THE PIANO", making the full invitation:
+        PLEASE
+        SIT DOWN AT
+        THE PIANO
+    Both overlay functions now accept a show_invitation parameter and
+    render all three lines (or the single "NO FACE" label) accordingly.
+
+  • Vertical spacing: the gap between invitation lines increased by 5 px
+    (footer overlay: line step 28 → 33 px; centred overlay: th+18 → th+23 px).
+
+  • Invitation block centred vertically in the window (both overlay modes):
+    Previously the footer overlay pinned the text to the bottom bar and the
+    centred overlay used a fixed h*0.72 offset.  Now both compute:
+        first_y = h // 2 − line_step + th // 2
+    so the visual midpoint of the three-line block lands at h/2 regardless
+    of frame size.  The footer bar returns to its normal slim height since
+    the text is no longer positioned in the footer area.
+
 ================================================================================
 END OF LOG
 ================================================================================
