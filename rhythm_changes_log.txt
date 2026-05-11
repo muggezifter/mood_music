@@ -757,6 +757,48 @@ mood_detector.py
     of frame size.  The footer bar returns to its normal slim height since
     the text is no longer positioned in the footer area.
 
+--------------------------------------------------------------------------------
+STEP 19 — --demo and --keepalive-interval parameters
+--------------------------------------------------------------------------------
+Date: May 11, 2026
+File: rhythm_changes.py
+
+Two new CLI parameters for unattended / exhibition use.
+
+--demo N   float, default 0 (disabled)
+  When set to a positive number, a new daemon thread (_demo_thread_func)
+  changes the active mood to a random different mood every N seconds.
+  The thread runs only while mood_detector has not yet connected: the first
+  'face_off' token received over TCP sets a new _face_gated threading.Event,
+  which the demo thread monitors and immediately exits upon.  From that point
+  mood control is fully handed over to mood_detector as normal.
+
+  Implementation details:
+    _face_gated  (threading.Event) — set the first time 'face_off' arrives
+      from the network listener; replaces the previous unconditional clear.
+    _demo_thread_func(interval) — loops with 0.5 s increments watching both
+      _stop_event and _face_gated; on each full interval picks a mood from
+      MOOD_PARAMS that differs from the current one and updates MOOD under
+      _mood_lock. Prints "[demo] Mood → <name>" on each change.
+    On startup (when DEMO > 0) prints:
+      "[demo] Active — mood will change every N s until mood_detector connects."
+
+  Example:
+    python rhythm_changes.py --demo 10 --changes rotate
+
+--keepalive-interval N   float, default 300
+  Sets the number of seconds between silent keepalive MIDI notes sent to the
+  piano while in no-face / paused mode (previously hard-coded to 60 s).
+  The value is passed directly to _keepalive_thread_func as its interval
+  argument.  Set to 0 to effectively disable keepalives (the thread enters
+  an infinite wait without ever firing).
+
+  New constant : DEFAULT_KEEPALIVE = 300
+  New global   : KEEPALIVE  (set from args.keepalive_interval in main())
+
+  Example:
+    python rhythm_changes.py --keepalive-interval 120
+
 ================================================================================
 END OF LOG
 ================================================================================

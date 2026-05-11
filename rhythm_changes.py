@@ -49,6 +49,8 @@ DEFAULT_MELODY_VEL_BOOST = 0     # additional velocity added to every melody not
 DEFAULT_MELODY_OCTAVE   = 0     # octave shift for melody: -1 down, 0 none, +1 up
 DEFAULT_MELODY_PORT     = None  # if set, melody uses this separate MIDI port index
 DEFAULT_ROTATE_EVERY    = 4      # choruses of each changes type before rotating
+DEFAULT_DEMO            = 0      # 0 = disabled; >0 = seconds between random mood changes in demo mode
+DEFAULT_KEEPALIVE      = 300    # seconds between keepalive messages while paused
 
 # Module-level names kept for use by helper functions; set in main() from args.
 BPM       = DEFAULT_BPM
@@ -73,6 +75,8 @@ MELODY_VEL_BOOST = DEFAULT_MELODY_VEL_BOOST
 MELODY_OCTAVE    = DEFAULT_MELODY_OCTAVE
 MELODY_PORT      = DEFAULT_MELODY_PORT
 ROTATE_EVERY     = DEFAULT_ROTATE_EVERY
+DEMO             = DEFAULT_DEMO
+KEEPALIVE        = DEFAULT_KEEPALIVE
 
 # Set in main(); either the same MidiOut as the accompaniment or a second port.
 _mel_out: 'rtmidi.MidiOut | None' = None
@@ -109,6 +113,7 @@ _mood_lock     = threading.Lock()
 _stop_event    = threading.Event()
 _play_event    = threading.Event()
 _play_event.set()               # playing by default; cleared on 'face_off'
+_face_gated    = threading.Event()  # set the first time 'face_off' is received from mood_detector
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Mood → melody parameters
@@ -864,6 +869,7 @@ def network_listener_func(port: int) -> None:
                             print("[net] Face detected \u2192 resuming", flush=True)
                         elif word == 'face_off':
                             _play_event.clear()
+                            _face_gated.set()   # mood_detector is connected
                             print("[net] No face \u2192 pausing", flush=True)
                 except socket.timeout:
                     continue
@@ -881,6 +887,34 @@ def network_listener_func(port: int) -> None:
         except OSError:
             break
     server.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Demo thread — cycles through moods randomly until mood_detector connects
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _demo_thread_func(interval: float) -> None:
+    """Change MOOD randomly every *interval* seconds.
+
+    Runs only while mood_detector has not yet connected.  As soon as the first
+    'face_off' token arrives (signalled by _face_gated) the thread exits and
+    mood control is fully handed over to mood_detector.
+    """
+    import random
+    global MOOD
+    moods = list(MOOD_PARAMS.keys())
+    while not _stop_event.is_set() and not _face_gated.is_set():
+        # Sleep in small increments so we react quickly to stop / gate events.
+        elapsed = 0.0
+        while elapsed < interval and not _stop_event.is_set() and not _face_gated.is_set():
+            _stop_event.wait(timeout=0.5)
+            elapsed += 0.5
+        if _stop_event.is_set() or _face_gated.is_set():
+            break
+        new_mood = random.choice([m for m in moods if m != MOOD])
+        with _mood_lock:
+            MOOD = new_mood
+        print(f"[demo] Mood \u2192 {MOOD}", flush=True)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1034,6 +1068,17 @@ def parse_args() -> argparse.Namespace:
              "the accompaniment port. Use the port list printed on startup to find "
              "the right index.",
     )
+    p.add_argument(
+        "--demo", type=float, default=DEFAULT_DEMO, metavar="N",
+        help=f"Demo mode: change mood randomly every N seconds until mood_detector "
+             f"connects (default: {DEFAULT_DEMO}, 0 = disabled).",
+    )
+    p.add_argument(
+        "--keepalive-interval", type=float, default=DEFAULT_KEEPALIVE, metavar="N",
+        dest='keepalive_interval',
+        help=f"Seconds between silent keepalive notes sent to the piano while paused "
+             f"(default: {DEFAULT_KEEPALIVE}). Set to 0 to disable.",
+    )
     args = p.parse_args()
     # Validation
     if args.bpm < 20 or args.bpm > 300:
@@ -1089,7 +1134,7 @@ def main() -> None:
     global BPM, LOOPS, PORT, CHANNEL, PROGRAM, VEL_BASS, VEL_CHORD, NOTE_FILL
     global KEY, TRANSPOSE, STYLE, CHANGES, BASS_VARIATION, MOOD_TEMPO
     global MELODY_CHANNEL, MELODY_PROGRAM, NET_PORT, MOOD, MELODY_VEL_BOOST, MELODY_OCTAVE
-    global MELODY_PORT, _mel_out, ROTATE_EVERY
+    global MELODY_PORT, _mel_out, ROTATE_EVERY, DEMO, KEEPALIVE
 
     args = parse_args()
     BPM            = args.bpm
@@ -1112,6 +1157,8 @@ def main() -> None:
     MELODY_OCTAVE    = args.melody_octave
     MELODY_PORT      = args.melody_port
     ROTATE_EVERY     = args.rotate_every
+    DEMO             = args.demo
+    KEEPALIVE        = args.keepalive_interval
 
     _rotate_mode = (CHANGES == 'rotate')
     if _rotate_mode:
@@ -1159,10 +1206,18 @@ def main() -> None:
     mel_thread.start()
 
     keepalive_thread = threading.Thread(
-        target=_keepalive_thread_func, args=(midiout,),
+        target=_keepalive_thread_func, args=(midiout, KEEPALIVE),
         daemon=True, name='keepalive',
     )
     keepalive_thread.start()
+
+    if DEMO > 0:
+        demo_thread = threading.Thread(
+            target=_demo_thread_func, args=(DEMO,),
+            daemon=True, name='demo',
+        )
+        demo_thread.start()
+        print(f"[demo] Active — mood will change every {DEMO:.0f} s until mood_detector connects.")
 
     chorus = 0
     try:
